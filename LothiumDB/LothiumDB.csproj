@@ -10,9 +10,13 @@
     <Description>A Simple An Easy To Use C# ORM To manage different type of database connections and datas</Description>
     <Copyright>$(Copyright)</Copyright>
     <RepositoryUrl>https://github.com/AndreaSantinato/LothiumDB</RepositoryUrl>
-    <PackageProjectUrl>https://github.com/AndreaSantinato/LothiumDB#readme</PackageProjectUrl>
+    <PackageProjectUrl>https://github.com/AndreaSantinato/LothiumDB</PackageProjectUrl>
     <NeutralLanguage>it</NeutralLanguage>
     <PackageOutputPath></PackageOutputPath>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <AssemblyVersion>$(Version)</AssemblyVersion>
+    <FileVersion>$(Version)</FileVersion>
+    <PackageLicenseFile>LICENSE.txt</PackageLicenseFile>
   </PropertyGroup>
 
   <ItemGroup>
@@ -40,5 +44,15 @@
     <Compile Remove="Utility\DatabaseCommands.cs" />
     <Compile Remove="Utility\SqlLastCmdHelper.cs" />
     <Compile Remove="Interfaces\IProviderBuilder.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="D:\GitTea Repository\LothiumSolutions\LothiumCore\LICENSE.txt">
+      <Pack>True</Pack>
+      <PackagePath>\</PackagePath>
+    </None>
+    <None Include="D:\GitTea Repository\LothiumSolutions\LothiumCore\README.md">
+      <Pack>True</Pack>
+      <PackagePath>\</PackagePath>
+    </None>
   </ItemGroup>
 </Project>
