@@ -12,6 +12,7 @@
     <RepositoryUrl>https://github.com/AndreaSantinato/LothiumDB</RepositoryUrl>
     <PackageProjectUrl>https://github.com/AndreaSantinato/LothiumDB#readme</PackageProjectUrl>
     <NeutralLanguage>it</NeutralLanguage>
+    <PackageOutputPath></PackageOutputPath>
   </PropertyGroup>
 
   <ItemGroup>
