@@ -7,7 +7,7 @@ using System.Text;
 using System.Threading.Tasks;
 // Custom Class
 using LothiumDB.Attributes;
-using LothiumDB.Databases;
+using LothiumDB;
 
 namespace LothiumDB.Models
 {

@@ -4,6 +4,14 @@
     <TargetFramework>net7.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
+    <Title>LothiumDB - Simple DIY ORM Library For C#</Title>
+    <Authors>$(AssemblyName)</Authors>
+    <Description>A Simple An Easy To Use C# ORM To manage different type of database connections and datas</Description>
+    <Copyright>$(Copyright)</Copyright>
+    <RepositoryUrl>https://github.com/AndreaSantinato/LothiumDB</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/AndreaSantinato/LothiumDB#readme</PackageProjectUrl>
+    <NeutralLanguage>it</NeutralLanguage>
   </PropertyGroup>
 
   <ItemGroup>

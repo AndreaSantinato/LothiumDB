@@ -1,9 +1,11 @@
-﻿using System;
+﻿// System Class
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using LothiumDB.Databases;
+// Custom Class
+using LothiumDB;
 using LothiumDB.Enumerations;
 
 namespace LothiumDB.Interfaces

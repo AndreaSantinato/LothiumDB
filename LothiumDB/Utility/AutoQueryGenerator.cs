@@ -2,7 +2,7 @@
 using System;
 using System.Reflection;
 // Custom Class
-using LothiumDB.Databases;
+using LothiumDB;
 using LothiumDB.Interfaces;
 
 namespace LothiumDB.Helpers

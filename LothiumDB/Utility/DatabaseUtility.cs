@@ -16,7 +16,7 @@ using System.Reflection.Metadata;
 using System.Data.Common;
 // Custom Class
 using Microsoft.Data.SqlClient;
-using LothiumDB.Databases;
+using LothiumDB;
 using LothiumDB.Enumerations;
 using LothiumDB.Interfaces;
 using LothiumDB.Providers;
