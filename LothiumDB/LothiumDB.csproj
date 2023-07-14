@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net7.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove="DatabaseExtensions\**" />
+    <Compile Remove="DatabaseProviders\**" />
+    <EmbeddedResource Remove="DatabaseExtensions\**" />
+    <EmbeddedResource Remove="DatabaseProviders\**" />
+    <None Remove="DatabaseExtensions\**" />
+    <None Remove="DatabaseProviders\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Remove="Cores\" />
+    <None Remove="Microsoft.Data.SqlClient" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.SqlClient" Version="5.1.1" />
+    <PackageReference Include="MySql.Data" Version="8.0.33" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Remove="Providers\DbProvider.cs" />
+    <Compile Remove="Enumerations\ProviderTypes.cs" />
+    <Compile Remove="Enumerations\SqlCommandHistoryTypes.cs" />
+    <Compile Remove="Enumerations\SqlTypes.cs" />
+    <Compile Remove="Utility\DatabaseCommands.cs" />
+    <Compile Remove="Utility\SqlLastCmdHelper.cs" />
+    <Compile Remove="Interfaces\IProviderBuilder.cs" />
+  </ItemGroup>
+</Project>
