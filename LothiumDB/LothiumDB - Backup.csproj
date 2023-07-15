@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net6.0</TargetFramework>
@@ -14,9 +14,8 @@
     <NeutralLanguage>it</NeutralLanguage>
     <PackageOutputPath></PackageOutputPath>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-	<Version>1.0.0.1</Version>
-	<AssemblyVersion>1.0.0.1</AssemblyVersion>
-	<FileVersion>1.0.0.1</FileVersion>  
+    <AssemblyVersion>$(Version)</AssemblyVersion>
+    <FileVersion>1.0.1</FileVersion>
     <PackageLicenseFile>LICENSE.txt</PackageLicenseFile>
     <PackageReleaseNotes>Core Methods Changes</PackageReleaseNotes>
     <ApplicationIcon>LothiumDB.ico</ApplicationIcon>
