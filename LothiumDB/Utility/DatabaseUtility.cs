@@ -40,14 +40,14 @@ namespace LothiumDB.Helpers
             IDbProvider provider = null;
             switch (name) 
             {
-                case nameof(MSSqlServerDbProvider):
-                    provider = new MSSqlServerDbProvider();
+                case nameof(MSSqlServerProvider):
+                    provider = new MSSqlServerProvider();
                     break;
-                case nameof(MySqlServerDbProvider):
-                    provider = new MySqlServerDbProvider();
+                case nameof(MySqlProvider):
+                    provider = new MySqlProvider();
                     break;
             }
-            if (provider == null) provider = new MSSqlServerDbProvider();
+            if (provider == null) provider = new MSSqlServerProvider();
             return provider;
         }
 

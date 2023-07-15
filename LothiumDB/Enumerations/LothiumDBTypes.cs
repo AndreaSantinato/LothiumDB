@@ -14,8 +14,9 @@ namespace LothiumDB.Enumerations
         None = 0,
         MSSql = 1,
         MySql = 2,
-        Oracle = 3,
-        Firebird = 4
+        MariaDB = 3,
+        Oracle = 4,
+        Firebird = 5
     }
 
     /// <summary>

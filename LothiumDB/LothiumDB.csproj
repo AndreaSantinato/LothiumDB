@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net7.0</TargetFramework>
+    <TargetFramework>net6.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
@@ -14,9 +14,12 @@
     <NeutralLanguage>it</NeutralLanguage>
     <PackageOutputPath></PackageOutputPath>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <AssemblyVersion>$(Version)</AssemblyVersion>
-    <FileVersion>$(Version)</FileVersion>
+    <AssemblyVersion>1.0.0.1</AssemblyVersion>
+    <FileVersion>1.0.0.1</FileVersion>
     <PackageLicenseFile>LICENSE.txt</PackageLicenseFile>
+    <PackageReleaseNotes>Core Methods Changes</PackageReleaseNotes>
+    <ApplicationIcon>LothiumDB.ico</ApplicationIcon>
+    <PackageIcon>LothiumDB.png</PackageIcon>
   </PropertyGroup>
 
   <ItemGroup>
@@ -46,11 +49,20 @@
     <Compile Remove="Interfaces\IProviderBuilder.cs" />
   </ItemGroup>
   <ItemGroup>
+    <Content Include="LothiumDB.ico" />
+  </ItemGroup>
+  <ItemGroup>
     <None Include="D:\GitTea Repository\LothiumSolutions\LothiumCore\LICENSE.txt">
       <Pack>True</Pack>
       <PackagePath>\</PackagePath>
     </None>
-    <None Include="D:\GitTea Repository\LothiumSolutions\LothiumCore\README.md">
+    <None Include="..\README.md">
+      <Pack>True</Pack>
+      <PackagePath>\</PackagePath>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <None Update="LothiumDB.png">
       <Pack>True</Pack>
       <PackagePath>\</PackagePath>
     </None>

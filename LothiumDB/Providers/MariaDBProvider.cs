@@ -5,9 +5,10 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Data;
+using MySql.Data.Common;
 
 // Custom Class
-using Microsoft.Data.SqlClient;
+using MySql.Data.MySqlClient;
 using LothiumDB.Helpers;
 using LothiumDB.Enumerations;
 using LothiumDB.Interfaces;
@@ -15,11 +16,11 @@ using LothiumDB.Interfaces;
 namespace LothiumDB.Providers
 {
     /// <summary>
-    /// Defines A Provider For A Microsoft SQL Server's Database Istance
+    /// Defines A Provider For A MariaDB's Database Istance
     /// </summary>
-    public sealed class MSSqlServerDbProvider : IDbProvider
+    public class MariaDBProvider : IDbProvider
     {
-        public ProviderTypes ProviderType() => ProviderTypes.MSSql;
+        public ProviderTypes ProviderType() => ProviderTypes.MariaDB;
 
         public string VariablePrefix() => "@";
 
@@ -32,21 +33,17 @@ namespace LothiumDB.Providers
                 if (DatabaseUtility.VerifyConnectionStringParameters(arg)) return string.Empty;
             }
 
-            SqlConnectionStringBuilder MSSqlConnStringBuilder = new SqlConnectionStringBuilder()
+            MySqlConnectionStringBuilder MariaDBConnStringBuilder = new MySqlConnectionStringBuilder()
             {
-                ConnectRetryCount = 2,
-                CommandTimeout = 30,
-                Authentication = SqlAuthenticationMethod.SqlPassword,
-                DataSource = (string)args[0],
+                DefaultCommandTimeout = 30,
+                Server = (string)args[0],
                 UserID = (string)args[1],
                 Password = (string)args[2],
-                InitialCatalog = (string)args[3],
-                CurrentLanguage = (string)args[4],
-                Encrypt = (bool)args[5],
-                TrustServerCertificate = (bool)args[6]
+                Database = (string)args[3],
+                SqlServerMode = (bool)args[4]
             };
 
-            return MSSqlConnStringBuilder.ConnectionString;
+            return MariaDBConnStringBuilder.ConnectionString;
         }
 
         public string BuildPageQuery(string query, long offset, long element) => DatabaseUtility.BuildPageQuery(query, offset, element);

@@ -21,66 +21,57 @@ namespace LothiumDB
     {
         // Properties (Public & Private)
 
-        #region Connection Properties
+        #region Connection, Transaction, Provider Properties
 
-        /// <summary>
-        /// Private Property For The Database Current DB's Connection
-        /// </summary>
         protected IDbConnection? _dbConn = null;
-
-        /// <summary>
-        /// Contains the database connection's state
-        /// </summary>
-        public IDbConnection? Connection => _dbConn;
-
-        #endregion
-        #region Transaction Properties
-
-        /// <summary>
-        /// Private Property For The Database Current DB's Connection's Transaction
-        /// </summary>
         protected IDbTransaction? _dbTran = null;
+        protected IDbProvider? _dbProv = null;
+
+        /// <summary>
+        /// Contains the database's connection
+        /// </summary>
+        public IDbConnection? Connection { get { return _dbConn; } private set { _dbConn = value; } }
+
+        /// <summary>
+        /// Contains the database's transaction
+        /// </summary>
+        public IDbTransaction? Transaction { get { return _dbTran; } private set { _dbTran = value; } }
 
         /// <summary>
         /// Contains the database's provider
         /// </summary>
-        public IDbProvider? DbProvider => _dbProv;
+        public IDbProvider? Provider { get { return _dbProv; } private set { _dbProv = value; } }
 
         #endregion
-        #region Provider Property
 
-        /// <summary>
-        /// Private Property For The Database Current DB's Connection's Provider
-        /// </summary>
-        protected IDbProvider? _dbProv = null;
+        #region LastSql, LastCommand Properties
 
-        #endregion
-        #region LastSql Properties
-
-        /// <summary>
-        /// Contains the last complete executed Sql Query
-        /// </summary>
         private String? _lastSql = String.Empty;
+        private String? _lastCommand = String.Empty;
 
         /// <summary>
         /// Contains the complete last executed query with all parameters replace
         /// </summary>
-        public String? LastSql => _lastSql;
-
-        #endregion
-        #region LastCommand Properties
-
-        /// <summary>
-        /// Contains the last command executed (Sql Query without parameters replacing)
-        /// </summary>
-        private String? _lastCommand = String.Empty;
+        public String? LastSql { get { return _lastSql; } private set { _lastSql = value; } }
 
         /// <summary>
         /// Contains the last executed query without parameters replace
         /// </summary>
-        public String? LastCommand => _lastCommand;
+        public String? LastCommand { get { return _lastCommand; } private set { _lastCommand = value; } }
 
         #endregion
+
+        #region Database Exception Property
+
+        private DatabaseException? _lastExcep = null;
+
+        /// <summary>
+        /// Contains the last database's generated error
+        /// </summary>
+        public DatabaseException? LastError { get { return _lastExcep; } private set { _lastExcep = value; } }
+
+        #endregion
+
         #region Command TimeOut Properties
 
         /// <summary>
@@ -94,6 +85,7 @@ namespace LothiumDB
         public int CommandTimeOut { get { return _cmdTimeOut; } set { _cmdTimeOut = value; } }
 
         #endregion
+
         #region Audit Properties
 
         /// <summary>
@@ -112,6 +104,7 @@ namespace LothiumDB
         private bool _auditExec = false;
 
         #endregion
+        
         #region SafeHandle Properties
 
         /// <summary>
@@ -137,17 +130,25 @@ namespace LothiumDB
         /// <param name="connectionString">Contains the connection string</param>
         public Database(IDbProvider provider, string connectionString)
         {
+            // Set the choosen provider
+            _dbProv = provider;
+
+            // Set the connection and the transaction
             _dbConn = DatabaseUtility.GenerateConnection(provider.ProviderType(), connectionString);
             _dbConn.ConnectionString = connectionString;
-            _dbProv = provider;
             _dbTran = null;
+
+            // Set the remaining properties
+            _lastSql = String.Empty;
+            _lastCommand = String.Empty;
+            _lastExcep = null;
         }
 
         /// <summary cref="Database">
         /// By Default this method will inizialize a new Microsoft SQL Server database communication's istance
         /// </summary>
         /// <param name="connectionString">Contains the connection string</param>
-        public Database(string connectionString) : this(new MSSqlServerDbProvider(), connectionString) { }
+        public Database(string connectionString) : this(new MSSqlServerProvider(), connectionString) { }
 
         /// <summary cref="Database"></summary>
         /// <param name="provider">Contains the db's provider</param>
@@ -173,6 +174,7 @@ namespace LothiumDB
         public void Dispose() => Dispose(true);
 
         #endregion
+
         #region Database Core Methods
 
         /// <summary>
@@ -292,24 +294,19 @@ namespace LothiumDB
         /// <returns>Return True If The Connection's Status Is Closed</returns>
         public bool IsConnectionClosed() => DatabaseExtensions.ManageConnectionState(_dbConn);
 
-        #endregion
-
-        // Base Methods
-
-        #region Scalar, NonQuery, Query Commands
-
         /// <summary>
         /// Invoke the DB Scalar command in the Database Istance and return a single value of a specific object type
         /// </summary>
         /// <typeparam name="T">Contains the type for the returned object</typeparam>
         /// <param name="sql">Contains the SQL object</param>
         /// <returns>A value based of the object type</returns>
-        public T Scalar<T>(SqlBuilder sql)
+        /// <exception cref="Exception"></exception>
+        internal T ExecuteScalar<T>(SqlBuilder sql)
         {
             T? objResult = default;
             IDbCommand cmd = DatabaseExtensions.CreateCommand(_dbProv, _dbConn, CommandType.Text, sql.Sql, sql.Params);
             LothiumDataInfo? dataInfo = new LothiumDataInfo(typeof(T));
-            
+
             // Audit Parameters
             AuditLevels auditLevel = AuditLevels.Info;
             String? auditErrorMsg = String.Empty;
@@ -321,18 +318,26 @@ namespace LothiumDB
 
             try
             {
+                // Verify the connection's state
                 if (!DatabaseExtensions.ManageConnectionState(_dbConn))
                     DatabaseExtensions.ManageConnection(InternalOperationType.OpenConnection, ref _dbConn);
 
-                // Verify if the provided connection is open, otherwise generate a new exception
-                if (_dbConn == null) throw new Exception("The database object is not initialize!");
-
-                // Execute the provided command
-                using (cmd)
+                try
                 {
-                    if (_dbTran != null) cmd.Transaction = _dbTran;
-                    objResult = (T)cmd.ExecuteScalar();
-                }   
+                    // Verify if the provided connection is open, otherwise generate a new exception
+                    if (_dbConn == null) throw new Exception("The database object is not initialize!");
+
+                    // Execute the provided command
+                    using (cmd)
+                    {
+                        if (_dbTran != null) cmd.Transaction = _dbTran;
+                        objResult = (T)cmd.ExecuteScalar();
+                    }
+                }
+                catch (DatabaseException ex)
+                {
+                    throw new Exception(ex.Message, ex);
+                }
             }
             catch (DatabaseException ex)
             {
@@ -340,6 +345,7 @@ namespace LothiumDB
                 ex.ErrorMSG = String.Concat("[Scalar Command Error]: ", ex.Message);
                 auditErrorMsg = ex.Message;
                 auditLevel = AuditLevels.Error;
+                objResult = default;
             }
             finally
             {
@@ -354,20 +360,12 @@ namespace LothiumDB
         }
 
         /// <summary>
-        /// Invoke the DB Scalar command in the Database Istance and return a single value of a specific object type
-        /// </summary>
-        /// <typeparam name="T">Contains the type for the returned object</typeparam>
-        /// <param name="sql">Contains the query command to be executed</param>
-        /// <param name="args">Contains all the extra arguments of the query</param>
-        /// <returns>A value based of the object type</returns>
-        public T Scalar<T>(string sql, params object[] args) => Scalar<T>(new SqlBuilder(sql, args));
-
-        /// <summary>
         /// Invoke the DB NonQuery command in the Database Istance and return the number of completed operations
         /// </summary>
         /// <param name="sql">Contains the SQL object</param>
         /// <returns>An int value that count all the affected table rows</returns>
-        public int Execute(SqlBuilder sql)
+        /// <exception cref="Exception"></exception>
+        internal int ExecuteNonQuery(SqlBuilder sql)
         {
             int affectedRowOnCommand = 0;
             IDbCommand cmd = DatabaseExtensions.CreateCommand(_dbProv, _dbConn, CommandType.Text, sql.Sql, sql.Params);
@@ -386,12 +384,19 @@ namespace LothiumDB
                 if (!DatabaseExtensions.ManageConnectionState(_dbConn))
                     DatabaseExtensions.ManageConnection(InternalOperationType.OpenConnection, ref _dbConn);
 
-                if (_dbConn == null) throw new Exception("The database object is not initialize!");
-
-                using (cmd)
+                try
                 {
-                    if (_dbTran != null) cmd.Transaction = _dbTran;
-                    affectedRowOnCommand = cmd.ExecuteNonQuery();
+                    if (_dbConn == null) throw new Exception("The database object is not initialize!");
+
+                    using (cmd)
+                    {
+                        if (_dbTran != null) cmd.Transaction = _dbTran;
+                        affectedRowOnCommand = cmd.ExecuteNonQuery();
+                    }
+                }
+                catch (DatabaseException ex)
+                {
+                    throw new Exception(ex.Message, ex);
                 }
             }
             catch (DatabaseException ex)
@@ -400,6 +405,7 @@ namespace LothiumDB
                 ex.ErrorMSG = String.Concat("[Execute Command Error]: ", ex.Message);
                 auditErrorMsg = ex.ErrorMSG;
                 auditLevel = AuditLevels.Error;
+                affectedRowOnCommand = -1;
             }
             finally
             {
@@ -414,20 +420,13 @@ namespace LothiumDB
         }
 
         /// <summary>
-        /// Invoke the DB NonQuery command in the Database Istance and return the number of completed operations
-        /// </summary>
-        /// <param name="sql">Contains the query command to be executed</param>
-        /// <param name="args">Contains all the extra arguments of the query</param>
-        /// <returns>An int value that count all the affected table rows</returns>
-        public int Execute(string sql, params object[] args) => Execute(new SqlBuilder(sql, args));
-
-        /// <summary>
         /// Invoke the DB Query command in the Database Istance and cast it to a specific object type
         /// </summary>
         /// <typeparam name="T">Contains the type for the returned object</typeparam>
         /// <param name="sql">Contains the SQL object</param>
         /// <returns>A value based of the object type</returns>
-        public List<T> Query<T>(SqlBuilder sql)
+        /// <exception cref="Exception"></exception>
+        internal List<T> ExecuteQuery<T>(SqlBuilder sql)
         {
             LothiumDataInfo? dataInfo = new LothiumDataInfo(typeof(T));
             Type type = typeof(T);
@@ -449,34 +448,41 @@ namespace LothiumDB
                 if (!DatabaseExtensions.ManageConnectionState(_dbConn))
                     DatabaseExtensions.ManageConnection(InternalOperationType.OpenConnection, ref _dbConn);
 
-                if (_dbConn == null) throw new Exception("The database object is not initialize!");
-
-                using (cmd)
+                try
                 {
-                    if (_dbTran != null) cmd.Transaction = _dbTran;
+                    if (_dbConn == null) throw new Exception("The database object is not initialize!");
 
-                    IDataReader cmdReader = cmd.ExecuteReader();
-                    while (cmdReader.Read())
+                    using (cmd)
                     {
-                        if (cmdReader.FieldCount > 0)
+                        if (_dbTran != null) cmd.Transaction = _dbTran;
+
+                        IDataReader cmdReader = cmd.ExecuteReader();
+                        while (cmdReader.Read())
                         {
-                            T? obj = (T)Activator.CreateInstance(typeof(T));
-
-                            PropertyInfo[] propertyInfo = LothiumDataInfo.GetProperties(type);
-                            foreach (PropertyInfo property in propertyInfo)
+                            if (cmdReader.FieldCount > 0)
                             {
-                                string pName = property.Name;
-                                if (dataInfo != null) pName = dataInfo.TableColumns[property.Name].ToString();
+                                T? obj = (T)Activator.CreateInstance(typeof(T));
 
-                                var value = cmdReader[pName];
-                                if (value == DBNull.Value) value = null;
-                                if (value != null) property.SetValue(obj, cmdReader[pName], null);
+                                PropertyInfo[] propertyInfo = LothiumDataInfo.GetProperties(type);
+                                foreach (PropertyInfo property in propertyInfo)
+                                {
+                                    string pName = property.Name;
+                                    if (dataInfo != null) pName = dataInfo.TableColumns[property.Name].ToString();
+
+                                    var value = cmdReader[pName];
+                                    if (value == DBNull.Value) value = null;
+                                    if (value != null) property.SetValue(obj, cmdReader[pName], null);
+                                }
+
+                                list.Add(obj);
                             }
-
-                            list.Add(obj);
                         }
                     }
                 }
+                catch (DatabaseException ex)
+                {
+                    throw new Exception(ex.Message, ex);
+                }    
             }
             catch (DatabaseException ex)
             {
@@ -484,6 +490,7 @@ namespace LothiumDB
                 ex.ErrorMSG = String.Concat("[Query Command Error]: ", ex.Message);
                 auditErrorMsg = ex.ErrorMSG;
                 auditLevel = AuditLevels.Error;
+                list = null;
             }
             finally
             {
@@ -496,6 +503,52 @@ namespace LothiumDB
 
             return list;
         }
+
+        #endregion
+
+        // Base Methods
+
+        #region Scalar, Execute, Query Commands
+
+        /// <summary>
+        /// Invoke the DB Scalar command in the Database Istance and return a single value of a specific object type
+        /// </summary>
+        /// <typeparam name="T">Contains the type for the returned object</typeparam>
+        /// <param name="sql">Contains the SQL object</param>
+        /// <returns>A value based of the object type</returns>
+        public T Scalar<T>(SqlBuilder sql) => ExecuteScalar<T>(sql);
+
+        /// <summary>
+        /// Invoke the DB Scalar command in the Database Istance and return a single value of a specific object type
+        /// </summary>
+        /// <typeparam name="T">Contains the type for the returned object</typeparam>
+        /// <param name="sql">Contains the query command to be executed</param>
+        /// <param name="args">Contains all the extra arguments of the query</param>
+        /// <returns>A value based of the object type</returns>
+        public T Scalar<T>(string sql, params object[] args) => Scalar<T>(new SqlBuilder(sql, args));
+
+        /// <summary>
+        /// Invoke the DB NonQuery command in the Database Istance and return the number of completed operations
+        /// </summary>
+        /// <param name="sql">Contains the SQL object</param>
+        /// <returns>An int value that count all the affected table rows</returns>
+        public int Execute(SqlBuilder sql) => ExecuteNonQuery(sql);
+
+        /// <summary>
+        /// Invoke the DB NonQuery command in the Database Istance and return the number of completed operations
+        /// </summary>
+        /// <param name="sql">Contains the query command to be executed</param>
+        /// <param name="args">Contains all the extra arguments of the query</param>
+        /// <returns>An int value that count all the affected table rows</returns>
+        public int Execute(string sql, params object[] args) => Execute(new SqlBuilder(sql, args));
+
+        /// <summary>
+        /// Invoke the DB Query command in the Database Istance and cast it to a specific object type
+        /// </summary>
+        /// <typeparam name="T">Contains the type for the returned object</typeparam>
+        /// <param name="sql">Contains the SQL object</param>
+        /// <returns>A value based of the object type</returns>
+        public List<T> Query<T>(SqlBuilder sql) => ExecuteQuery<T>(sql);
 
         /// <summary>
         /// Invoke the DB Query command in the Database Istance and cast it to a specific object type
@@ -612,7 +665,7 @@ namespace LothiumDB
         {
             var dInfo = new LothiumDataInfo(typeof(T));
             var autoSql = DatabaseUtility.GenerateAutoSelectClause(new SqlBuilder().OrderBy(string.Join(", ", (from x in dInfo.PrimaryKeys select x.PrimaryKey).ToArray())).Sql, dInfo);
-            return Query<T>(new SqlBuilder(DbProvider.BuildPageQuery(autoSql.Sql, offset, element)));
+            return Query<T>(new SqlBuilder(this.Provider.BuildPageQuery(autoSql.Sql, offset, element)));
         }
 
         /// <summary>

@@ -18,7 +18,7 @@ namespace LothiumDB.Providers
     /// <summary>
     /// Defines A Provider For A MySQL's Database Istance
     /// </summary>
-    public class MySqlServerDbProvider : IDbProvider
+    public class MySqlProvider : IDbProvider
     {
         public ProviderTypes ProviderType() => ProviderTypes.MySql;
 
