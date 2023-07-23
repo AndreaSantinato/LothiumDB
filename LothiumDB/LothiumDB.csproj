@@ -21,6 +21,7 @@
     <PackageReleaseNotes>Core Methods Changes</PackageReleaseNotes>
     <ApplicationIcon>LothiumDB.ico</ApplicationIcon>
     <PackageIcon>LothiumDB.png</PackageIcon>
+    <PackageTags>Database; Data; Base; Microsoft SQL Server; MSSqlServer; MySql; Micro-ORM; ORM; Simple-ORM</PackageTags>
   </PropertyGroup>
 
   <ItemGroup>
