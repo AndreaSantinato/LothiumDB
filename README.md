@@ -52,7 +52,7 @@ You can install LothiumDB directly from NuGet using the NuGet Manager inside Vis
 dotnet add package LothiumDB
 ```
 
-The simplest way to set up Serilog is using the static `Log` class. A `LoggerConfiguration` is used to create and assign the default logger.
+The simplest way to set up LothiumDB is using the `Database` class and the `SqlBuilder` query constructor.
 
 ```csharp
 using LothiumDB;
@@ -76,4 +76,4 @@ In The feature i'll separate the Master Branch from the Develop Branch
 
 I welcome any type of bug reports and suggestions through my GitHub [Issue Tracker](https://github.com/AndreaSantinato/LothiumDB/issues).
 
-_LothiumDB is copyright &copy; 2013-2020 Serilog Contributors - Provided under the [GNU General Public License v3.0](https://github.com/AndreaSantinato/LothiumDB/blob/main/LICENSE)._
+_LothiumDB is copyright &copy; 2013-2020 - Provided under the [GNU General Public License v3.0](https://github.com/AndreaSantinato/LothiumDB/blob/main/LICENSE)._
