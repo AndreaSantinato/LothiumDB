@@ -8,123 +8,131 @@ using System.Text;
 using System.Threading.Tasks;
 // Custom Class
 using LothiumDB.Attributes;
+using LothiumDB.Extensions;
+using LothiumDB.Exceptions;
+using System.Net.NetworkInformation;
+using System.Collections.Immutable;
 
 namespace LothiumDB.Helpers
 {
-    internal class PrimaryKeyInfo
-    {
-
-        /// <summary>
-        /// Contains the name of the object model's associated database's primary key
-        /// </summary>
-        public string? PrimaryKey { get; set; }
-
-        /// <summary>
-        /// Indicates if the provided Primarykey is an AutoIncrement Identity
-        /// </summary>
-        public bool IsPrimaryKeyAutoIncremenet { get; set; }
-
-        public PrimaryKeyInfo()
-        {
-            PrimaryKey = string.Empty;
-            IsPrimaryKeyAutoIncremenet = false;
-        }
-
-        public PrimaryKeyInfo(string pKey, bool autoIncrement)
-        {
-            PrimaryKey = pKey;
-            IsPrimaryKeyAutoIncremenet = autoIncrement;
-        }
-    }
-
     internal class LothiumDataInfo
     {
         /// <summary>
-        /// Contains the name of the object model's associated database's table
-        /// </summary>
-        public string? TableName { get; set; }
-
-        /// <summary>
-        /// Contains all the names of the object model's associated database's Primary Keys
-        /// </summary>
-        public List<PrimaryKeyInfo> PrimaryKeys { get; set; }
-
-        /// <summary>
-        /// Contains all the names of the object model's associated database's columns
-        /// </summary>
-        public Dictionary<string, object> TableColumns { get; set; }
-
-        /// <summary>
-        /// Contains all the names of the object model's associated database's excluded columns
-        /// </summary>
-        public Dictionary<string, object> TableExcludedColumns { get; set; }
-
-        /// <summary>
-        /// Default Costructor
-        /// </summary>
-        /// <param name="classType"></param>
-        public LothiumDataInfo(Type classType)
-        {
-            TableName = string.Empty;
-            PrimaryKeys = new List<PrimaryKeyInfo>();
-            TableColumns = new Dictionary<string, object>();
-            TableExcludedColumns = new Dictionary<string, object>();
-
-            try
-            {
-                // Get the Table's Name
-                TableNameAttribute tbNameAttr1 = (TableNameAttribute)Attribute.GetCustomAttribute(classType, typeof(TableNameAttribute));
-                if (tbNameAttr1 != null) TableName = tbNameAttr1.Table;
-
-                // Get All the PrimaryKeys and for each one retrive the Name and if it's auto-increment
-                PrimaryKeyAttribute[] tbPrimaryKeysAttr = (PrimaryKeyAttribute[])Attribute.GetCustomAttributes(classType, typeof(PrimaryKeyAttribute));
-                if (tbPrimaryKeysAttr != null && tbPrimaryKeysAttr.Length > 0)
-                {
-                    foreach (PrimaryKeyAttribute pk in tbPrimaryKeysAttr)
-                    {
-                        PrimaryKeys.Add(new PrimaryKeyInfo(pk.PrimaryKey, pk.IsAutoIncremenetKey));
-                    }
-                }
-
-                PropertyInfo[] pInfo = classType.GetTypeInfo().GetProperties();
-                foreach (PropertyInfo pi in pInfo)
-                {
-                    // Get all the Table's Columns
-                    ColumnNameAttribute colNameAttr = (ColumnNameAttribute)Attribute.GetCustomAttribute(pi, typeof(ColumnNameAttribute));
-                    if (colNameAttr != null) TableColumns.Add(pi.Name, colNameAttr.Column);
-
-                    // Get all the Excluded Table's Columns
-                    ExcludeColumnAttribute exColNameAttr = (ExcludeColumnAttribute)Attribute.GetCustomAttribute(pi, typeof(ExcludeColumnAttribute));
-                    if (exColNameAttr != null) TableExcludedColumns.Add(pi.Name, exColNameAttr.isExcluded);
-                }
-            }
-            catch (Exception ex)
-            {
-                //
-                // ToDo: Manage exception errors
-                //
-            }
-        }
-
-        /// <summary>
         /// Retrieve all the DB Mapped Properties and Exclude all the Property with the ExcludeColumn Attribute
         /// </summary>
-        /// <param name="classType">Contains the object type</param>
-        /// <returns></returns>
-        public static PropertyInfo[] GetProperties(Type classType)
+        /// <param name="obj">Contains the object that store all the table informations</param>
+        /// <returns>An array with all the properties of the object</returns>
+        public static PropertyInfo[] GetProperties(Type objType)
         {
             PropertyInfo[]? propertyInfo = null;
 
             try
             {
-                propertyInfo = classType.GetProperties().Where(pi => pi.GetCustomAttributes(typeof(ExcludeColumnAttribute), true).Length == 0).ToArray();
+                propertyInfo = objType.GetProperties().Where(pi => pi.GetCustomAttributes(typeof(ExcludeColumnAttribute), true).Length == 0).ToArray();
             }
             catch (Exception ex)
             {
-                propertyInfo = classType.GetProperties();
+                propertyInfo = objType.GetProperties();
             }
 
             return propertyInfo;
+        }
+
+        /// <summary>
+        /// Retrive all the database table informations from an object
+        /// </summary>
+        /// <param name="obj">Contains the object that store all the table informations</param>
+        /// <returns>A new table info object</returns>
+        public static TableInfo GetTableInfoFromPocoObject(Type objType)
+        {
+            TableInfo tbInfo = new TableInfo();
+
+            try
+            {
+                TableNameAttribute tbNameAttr1 = (TableNameAttribute)Attribute.GetCustomAttribute(objType, typeof(TableNameAttribute));
+                if (tbNameAttr1 != null) tbInfo.TableName = tbNameAttr1.Table;
+                tbInfo.PrimaryKeys = GetPrimaryKeysInfoFromPocoObject(objType);
+            }
+            catch (DatabaseException ex)
+            {
+                //
+                // ToDo: Manage The Exception
+                //
+            }
+
+            return tbInfo;
+        }
+
+        /// <summary>
+        /// Retrive all the database table's primary keys informations from an object
+        /// </summary>
+        /// <param name="obj">Contains the object that store all the table informations</param>
+        /// <returns>A new primary key list</returns>
+        public static List<PrimaryKeyInfo> GetPrimaryKeysInfoFromPocoObject(Type objType)
+        {
+            List<PrimaryKeyInfo> pkInfos = new List<PrimaryKeyInfo>();
+
+            try
+            {
+                PrimaryKeyAttribute[] tbPrimaryKeysAttr = (PrimaryKeyAttribute[])Attribute.GetCustomAttributes(objType, typeof(PrimaryKeyAttribute));
+                if (tbPrimaryKeysAttr != null && tbPrimaryKeysAttr.Length > 0)
+                {
+                    foreach (PrimaryKeyAttribute pk in tbPrimaryKeysAttr)
+                    {
+                        PrimaryKeyInfo pkInfo = new PrimaryKeyInfo();
+                        pkInfo.PrimaryKeyName = pk.PrimaryKey;
+                        pkInfo.IsAutoIncrementKey = pk.IsAutoIncremenetKey;
+                        pkInfos.Add(pkInfo);
+                    }
+                }
+            }
+            catch (DatabaseException ex)
+            {
+                //
+                // ToDo: Manage The Exception
+                //
+            }       
+
+            return pkInfos;
+        }
+
+        /// <summary>
+        /// Retrive all the database table's columns informations from an object
+        /// </summary>
+        /// <param name="obj">Contains the object that store all the table informations</param>
+        /// <returns>A new columInfo list</returns>
+        public static Dictionary<string, ColumnInfo> GetColumnsInfoFromPocoObject(Type objType, object obj = null)
+        {
+            Dictionary<string, ColumnInfo> colInfos = new Dictionary<string, ColumnInfo>();
+
+            try
+            {
+                PropertyInfo[] pInfo = objType.GetTypeInfo().GetProperties();
+                foreach (PropertyInfo pi in pInfo)
+                {
+                    ColumnNameAttribute colNameAttr = (ColumnNameAttribute)Attribute.GetCustomAttribute(pi, typeof(ColumnNameAttribute));
+                    ExcludeColumnAttribute exColNameAttr = (ExcludeColumnAttribute)Attribute.GetCustomAttribute(pi, typeof(ExcludeColumnAttribute));
+
+                    if (colNameAttr != null)
+                    {
+                        ColumnInfo columnInfo = new ColumnInfo();
+                        columnInfo.ColumnName = colNameAttr.Column;
+                        columnInfo.ColumnType = String.Empty; // ToDo
+                        if (obj != null) columnInfo.ColumnValue = pi.GetValue(obj);
+                        columnInfo.HaveColumnExcludedAttributes = false;
+                        if (exColNameAttr != null) columnInfo.HaveColumnExcludedAttributes = exColNameAttr.isExcluded;
+                        colInfos.Add(pi.Name, columnInfo);
+                    }
+                }
+            }
+            catch (DatabaseException ex)
+            {
+                //
+                // ToDo: Manage The Exception
+                //
+            }
+
+            return colInfos;
         }
     }
 }

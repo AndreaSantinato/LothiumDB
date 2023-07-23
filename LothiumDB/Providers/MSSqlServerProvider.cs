@@ -5,12 +5,14 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Data;
-
+using System.Collections;
+using System.Xml.Linq;
 // Custom Class
 using Microsoft.Data.SqlClient;
 using LothiumDB.Helpers;
 using LothiumDB.Enumerations;
 using LothiumDB.Interfaces;
+using LothiumDB.Extensions;
 
 namespace LothiumDB.Providers
 {
@@ -49,6 +51,10 @@ namespace LothiumDB.Providers
             return MSSqlConnStringBuilder.ConnectionString;
         }
 
-        public string BuildPageQuery(string query, long offset, long element) => DatabaseUtility.BuildPageQuery(query, offset, element);
+        public SqlBuilder BuildPageQuery<T>(PageObject<T> pageObj, SqlBuilder sql) 
+        {
+            sql.Append($"OFFSET {pageObj.ItemsForEachPage} ROWS").Append($"FETCH NEXT {pageObj.ItemsToBeSkipped} ROWS ONLY");
+            return sql;
+        }
     }
 }

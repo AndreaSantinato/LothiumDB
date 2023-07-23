@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 
 // Custom Class
 using LothiumDB.Enumerations;
+using LothiumDB.Extensions;
 
 namespace LothiumDB.Interfaces
 {
@@ -35,10 +36,9 @@ namespace LothiumDB.Interfaces
         /// <summary>
         /// Genereate a new query for a pagination element data
         /// </summary>
-        /// <param name="query">Contains the Select All query to add the pagination values</param>
-        /// <param name="offset">Contains the numnber of element to skip before start retrieving data, if 0 skip no element</param>
-        /// <param name="element">Contains the number of element to retrie, if 0 retrive all</param>
+        /// <param name="pageObj">Contains the page object that store all the information for the pagination</param>
+        /// <param name="sql">Contains the actual query for retriving data from the database to add the pagination values</param>
         /// <returns>Return a string with the pagination query</returns>
-        abstract string BuildPageQuery(string query, long offset, long element);
+        abstract SqlBuilder BuildPageQuery<T>(PageObject<T> pageObj, SqlBuilder sql);
     }
 }

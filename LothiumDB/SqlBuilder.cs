@@ -153,6 +153,14 @@ namespace LothiumDB
         public SqlBuilder Select(params object[] args) => Append($"SELECT {string.Join(", ", (from x in args select x.ToString()).ToArray())}");
 
         /// <summary>
+        /// Append a Select Top Clause to the final Query
+        /// </summary>
+        /// <param name="numberOfItems">Contains the number of element to be selected</param>
+        /// <param name="args">Contains all the arguments to append</param>
+        /// <returns>An Sql Objects With the Appended Value to the final Query result</returns>
+        public SqlBuilder SelectTop(int numberOfItems, params object[] args) => Append($"SELECT TOP {numberOfItems} {string.Join(", ", (from x in args select x.ToString()).ToArray())}");
+
+        /// <summary>
         /// Append a From Clause to the final Query
         /// </summary>
         /// <param name="args">Contains all the arguments to append</param>

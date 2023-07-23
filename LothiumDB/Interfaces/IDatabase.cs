@@ -7,7 +7,6 @@ using System.Text;
 using System.Threading.Tasks;
 // Custom Class
 using LothiumDB;
-using LothiumDB.DatabaseExceptions;
 using LothiumDB.Enumerations;
 
 namespace LothiumDB.Interfaces
@@ -36,7 +35,6 @@ namespace LothiumDB.Interfaces
         /// </summary>
         /// <typeparam name="T">Contains the type for the returned object</typeparam>
         /// <param name="sql">Contains the query command to be executed</param>
-        /// <param name="args">Contains all the extra arguments of the query</param>
         /// <returns>A value based of the object type</returns>
         public List<T> Query<T>(SqlBuilder sql);
 
@@ -47,14 +45,19 @@ namespace LothiumDB.Interfaces
         public List<T> FetchAll<T>();
 
         /// <summary>
+        /// Select all the elements inside a table using a specific Sql query
+        /// </summary>
+        /// <returns>A value based of the object type</returns>
+        public List<T> FetchAll<T>(SqlBuilder sql);
+
+        /// <summary>
         /// Select a single specific element inside a table
         /// </summary>
         /// <typeparam name="T">Contains the type for the returned object</typeparam>
         /// <param name="sql">Contains the query command to be executed</param>
-        /// <param name="args">Contains all the extra arguments of the query</param>
         /// <returns>A value based of the object type</returns>
         /// <returns></returns>
-        public T SingleFetch<T>(string sql, params object[] args);
+        public T FetchSingle<T>(SqlBuilder sql);
 
         /// <summary>
         /// Insert the passed object inside a table of the database in the form of a row

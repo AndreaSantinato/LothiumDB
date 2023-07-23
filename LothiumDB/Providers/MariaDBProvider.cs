@@ -12,6 +12,7 @@ using MySql.Data.MySqlClient;
 using LothiumDB.Helpers;
 using LothiumDB.Enumerations;
 using LothiumDB.Interfaces;
+using LothiumDB.Extensions;
 
 namespace LothiumDB.Providers
 {
@@ -46,6 +47,10 @@ namespace LothiumDB.Providers
             return MariaDBConnStringBuilder.ConnectionString;
         }
 
-        public string BuildPageQuery(string query, long offset, long element) => DatabaseUtility.BuildPageQuery(query, offset, element);
+        public SqlBuilder BuildPageQuery<T>(PageObject<T> pageObj, SqlBuilder sql)
+        {
+            sql.Append($"LIMIT {pageObj.ItemsForEachPage}").Append($"OFFSET {pageObj.ItemsToBeSkipped}");
+            return sql;
+        }
     }
 }

@@ -20,6 +20,7 @@ using LothiumDB;
 using LothiumDB.Enumerations;
 using LothiumDB.Interfaces;
 using LothiumDB.Providers;
+using LothiumDB.Extensions;
 
 namespace LothiumDB.Helpers
 {
@@ -61,21 +62,6 @@ namespace LothiumDB.Helpers
             if (param == null) return true;
             if (String.IsNullOrEmpty((string?)param)) return true;
             return false;
-        }
-
-        /// <summary>
-        /// Method that generate a sort of paged query with a specific number of elements
-        /// </summary>
-        /// <param name="query">Contains the query for the data (ex. SELECT * FROM TABLE)</param>
-        /// <param name="offset">Indicates the number of element that need to be skipped</param>
-        /// <param name="element">Indicates the number of element that need to be displayed</param>
-        /// <returns></returns>
-        public static string BuildPageQuery(string query, long offset, long element)
-        {
-            string pageQuery = query;
-            pageQuery += $"\n OFFSET {offset} ROWS";
-            if (element > 0) pageQuery += $"\n FETCH NEXT {element} ROWS ONLY";
-            return pageQuery;
         }
 
         public static IDbConnection GenerateConnection(ProviderTypes type, string connectionString)
@@ -211,39 +197,6 @@ namespace LothiumDB.Helpers
             Array.Copy(newArgs, 0, unifiedArgsArray, currArgs.Length, newArgs.Length);
 
             return unifiedArgsArray;
-        }
-
-        /// <summary>
-        /// Create an Auto Select * From [Table]
-        /// This methods needs an SQL with only Where, Join, GroupBy and OrderBy Conditions and a LothiumDataInfo object
-        /// </summary>
-        /// <param name="sqlConditions">Contains a partials query with only conditions</param>
-        /// <param name="dataInfo">Contains a LothiumDataInfo object with Attributes values</param>
-        /// <param name="args">Contains all the query parameter's values</param>
-        /// <returns></returns>
-        public static SqlBuilder GenerateAutoSelectClause(string sqlConditions, LothiumDataInfo? dataInfo, object[]? args = null)
-        {
-            SqlBuilder sql = new SqlBuilder().Select("*").From(dataInfo.TableName).Append(sqlConditions);
-            sql.ClearParameters();
-            sql.UpdateParameters(args);
-            return sql;
-        }
-
-        /// <summary>
-        /// Create an Auto Select * From [Table]
-        /// This methods needs an SQL with only Where, Join, GroupBy and OrderBy Conditions and a LothiumDataInfo object
-        /// </summary>
-        /// <param name="sqlConditions">Contains a partials query with only conditions</param>
-        /// <param name="dataInfo">Contains a LothiumDataInfo object with Attributes values</param>
-        /// <param name="topElement">Contains the number of element to select</param>
-        /// <param name = "args" > Contains all the query parameter's values</param>
-        /// <returns></returns>
-        public static SqlBuilder GenerateAutoSelectClause(string sqlConditions, LothiumDataInfo? dataInfo, int topElement, object[]? args = null)
-        {
-            SqlBuilder sql = new SqlBuilder().Select($"TOP {topElement} *").From(dataInfo.TableName).Append(sqlConditions);
-            sql.ClearParameters();
-            sql.UpdateParameters(args);
-            return sql;
         }
 
         /// <summary>

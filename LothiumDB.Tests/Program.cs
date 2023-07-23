@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 // Custom Class
 using LothiumDB;
+using LothiumDB.Extensions;
 using LothiumDB.Providers;
 using LothiumDB.Tester.TestModels;
 
@@ -13,7 +14,7 @@ Console.WriteLine("Start Testing Console Project");
 Database<MSSqlServerProvider> db = new Database<MSSqlServerProvider>("192.168.1.124", "SA", "SntnAndr28021998", "LothiumDB_Dev", "Italian", false, false);
 SqlBuilder? sql = null;
 
-int testSection = 6;
+int testSection = 8;
 if (testSection == 0)
 {
     sql = new SqlBuilder();
@@ -56,24 +57,18 @@ if (testSection == 1)
 if (testSection == 2)
 {
     // Tests for the FetchAll() Methods
-
-    var res5 = db.FetchAll<TabellaDiTest>(new SqlBuilder());
-    res5 = db.FetchAll<TabellaDiTest>();
-    res5 = db.FetchAll<TabellaDiTest>(0, 3);
+    var res5 = db.FetchAll<TabellaDiTest>();
+    res5 = db.FetchAll<TabellaDiTest>(new SqlBuilder());
     res5 = db.FetchAll<TabellaDiTest>("SELECT * FROM TabellaDiTest", 3, 2);
-    res5 = db.FetchAll<TabellaDiTest>(new SqlBuilder().Select("*").From("TabellaDiTest"), 3, 2);
-
-    sql = new SqlBuilder();
-    sql.Where("[Nome] = @0", "Nome5").Where("[Descrizione] = @1", "Descrizione5");
-    res5 = db.FetchAll<TabellaDiTest>(sql, 0, 3);
+    res5 = db.FetchAll<TabellaDiTest>(new SqlBuilder().Where("[Nome] = @0", "Nome5").Where("[Descrizione] = @1", "Descrizione5"));
 }
 if (testSection == 3)
 {
-    var res6 = db.SingleFetch<TabellaDiTest>("Where [Nome] = @0", "Nome4");
+    var res6 = db.FetchSingle<TabellaDiTest>("Where [Nome] = @0", "Nome4");
 
     sql = new SqlBuilder();
     sql.Select("TOP 1 *").From("TabellaDiTest").Where("[Nome] = @0", "Nome4");
-    res6 = db.SingleFetch<TabellaDiTest>(sql);
+    res6 = db.FetchSingle<TabellaDiTest>(sql);
 }
 if (testSection == 4)
 {
@@ -84,36 +79,66 @@ if (testSection == 4)
         PropertyNome = "Property 7",
         PropertyDescrizione = "Proprietà Di Test 7"
     };
-    db.Insert(tbTst1);
+    //db.Insert(tbTst1);
     lstTbTest = db.FetchAll<TabellaDiTest>();
 
     tbTst1.PropertyDescrizione = "Property Di Test 7 (Campo Aggiornato Da Codice)";
-    db.Update(tbTst1);
+    //db.Update(tbTst1);
     lstTbTest = db.FetchAll<TabellaDiTest>();
 
-    db.Delete(tbTst1);
+    //db.Delete(tbTst1);
     lstTbTest = db.FetchAll<TabellaDiTest>();
 }
 if (testSection == 5)
 {
     using (sql = new SqlBuilder("SELECT * FROM TabellaDiTest Where Nome = @0", "Property 1"))
     {
-        var prop = db.SingleFetch<TabellaDiTest>(sql);
+        var prop = db.FetchSingle<TabellaDiTest>(sql);
     }
 
     using (sql = new SqlBuilder())
     {
         sql.Select("*").From("TabellaDiTest").Where("Nome = @0", "Property 1");
-        var prop = db.SingleFetch<TabellaDiTest>(sql);
+        var prop = db.FetchSingle<TabellaDiTest>(sql);
     }
 }
 if (testSection == 6)
 {
-    db.EnableAuditMode();
+    //db.EnableAuditMode();
 
     var lst1 = db.Query<TabellaDiTest>(new SqlBuilder("SELECT * FROM TabellaDiTest")).ToDataSet();
 
-    db.DisableAuditMode();
+    //db.DisableAuditMode();
+}
+if (testSection == 7)
+{
+    TabellaDiTest tbtest1 = new TabellaDiTest() 
+    {
+        PropertyNome = "NewProperty",
+        PropertyDescrizione = "New Test Property"
+    };
+    
+    sql = LothiumDB.Helpers.AutoQueryGenerator.GenerateAutoSelectClauseFromPocoObject(new SqlBuilder("WHERE 1 = 1"), typeof(TabellaDiTest));
+    sql = LothiumDB.Helpers.AutoQueryGenerator.GenerateAutoSelectClauseFromPocoObject(new SqlBuilder("WHERE 1 = 1"), typeof(TabellaDiTest), 1);
+    sql = LothiumDB.Helpers.AutoQueryGenerator.GenerateInsertClauseFromPocoObject(db.Provider, tbtest1);
+    sql = LothiumDB.Helpers.AutoQueryGenerator.GenerateUpdateClauseFromPocoObject(db.Provider, tbtest1);
+    sql = LothiumDB.Helpers.AutoQueryGenerator.GenerateDeleteClauseFromPocoObject(db.Provider, tbtest1);
+
+    db.Insert(tbtest1);
+
+    tbtest1.PropertyDescrizione = "New Test Property Description";
+
+    db.Update(tbtest1);
+
+    db.Delete(tbtest1);
+}
+if (testSection == 8)
+{
+    PageObject<TabellaDiTest> page = new PageObject<TabellaDiTest>();
+    page.CurrentPage = 1;
+    page.ItemsForEachPage = 5;
+    page.ItemsToBeSkipped = 3;
+    var res8 = db.FetchPage<TabellaDiTest>(page);
 }
 
 return;
