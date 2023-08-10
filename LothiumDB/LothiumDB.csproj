@@ -8,7 +8,7 @@
     <Title>LothiumDB - Simple DIY ORM Library For C#</Title>
     <Authors>$(AssemblyName)</Authors>
     <Description>A Simple An Easy To Use C# ORM To manage different type of database connections and datas</Description>
-    <Copyright>$(Copyright)</Copyright>
+    <Copyright>Copyright LothiumSolutions © 2023 - Provided under the GNU General Public License v3.0</Copyright>
     <RepositoryUrl>https://github.com/AndreaSantinato/LothiumDB</RepositoryUrl>
     <PackageProjectUrl>https://github.com/AndreaSantinato/LothiumDB</PackageProjectUrl>
     <NeutralLanguage>it</NeutralLanguage>
@@ -22,6 +22,7 @@
     <ApplicationIcon>LothiumDB.ico</ApplicationIcon>
     <PackageIcon>LothiumDB.png</PackageIcon>
     <PackageTags>Database; Data; Base; Microsoft SQL Server; MSSqlServer; MySql; Micro-ORM; ORM; Simple-ORM</PackageTags>
+    <Company>LothiumSolutions</Company>
   </PropertyGroup>
 
   <ItemGroup>
