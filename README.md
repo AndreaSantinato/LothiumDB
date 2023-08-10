@@ -3,7 +3,7 @@
 LothiumDB is a simple micro ORM for .Net applications written entirely in C# for fun and offer a lot of different methods to fecth data in and out of a database.
 
 ```csharp
-var db = = new Database<DbProviderClass>(connectionString);
+var db = new Database<DbProviderClass>(connectionString);
 var sql = new SqlBuilder().Select("*").From("TableName");
 db.Query<PocoObject>(sql);
 ```
@@ -76,4 +76,4 @@ In The feature i'll separate the Master Branch from the Develop Branch
 
 I welcome any type of bug reports and suggestions through my GitHub [Issue Tracker](https://github.com/AndreaSantinato/LothiumDB/issues).
 
-_LothiumDB is copyright &copy; 2013-2020 - Provided under the [GNU General Public License v3.0](https://github.com/AndreaSantinato/LothiumDB/blob/main/LICENSE)._
+_LothiumDB is copyright &copy; 2023 - Provided under the [GNU General Public License v3.0](https://github.com/AndreaSantinato/LothiumDB/blob/main/LICENSE)._
