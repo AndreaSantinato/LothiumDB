@@ -801,7 +801,7 @@ namespace LothiumDB
         /// </summary>
         /// <returns>A value based of the object type</returns>
         public List<T> FetchAll<T>()
-            => Query<T>(AutoQueryGenerator.GenerateAutoSelectClauseFromPocoObject(new SqlBuilder(string.Empty), typeof(T)).Sql);
+            => FetchAll<T>(AutoQueryGenerator.GenerateAutoSelectClauseFromPocoObject(new SqlBuilder(string.Empty), typeof(T)).Sql);
 
         /// <summary>
         /// Select all the elements inside a table with a specify Sql query
@@ -811,8 +811,9 @@ namespace LothiumDB
         /// <returns>A value based of the object type</returns>
         public List<T> FetchAll<T>(SqlBuilder sql)
         {
-            if (sql == null || String.IsNullOrEmpty(sql.Sql)) return FetchAll<T>();
-            return Query<T>(AutoQueryGenerator.GenerateAutoSelectClauseFromPocoObject(sql, typeof(T)));
+            if (sql == null) return null;
+            if (String.IsNullOrEmpty(sql.Sql)) return null;
+            return Query<T>(sql);
         }
 
         /// <summary>
@@ -836,8 +837,9 @@ namespace LothiumDB
         /// <returns>A value based of the object type</returns>
         public T FetchSingle<T>(SqlBuilder sql)
         {
-            if (sql == null || String.IsNullOrEmpty(sql.Sql)) return default(T);
-            return FetchAll<T>(AutoQueryGenerator.GenerateAutoSelectClauseFromPocoObject(sql, typeof(T), 1)).FirstElement();
+            if (sql == null) return default(T);
+            if (String.IsNullOrEmpty(sql.Sql)) return default(T);
+            return FetchAll<T>(sql).FirstElement();
         }
 
         /// <summary>

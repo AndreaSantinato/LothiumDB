@@ -18,58 +18,40 @@ namespace LothiumDB.Helpers
         /// This methods needs an SQL with only Where, Join, GroupBy and OrderBy Conditions and a LothiumDataInfo object
         /// </summary>
         /// <param name="sqlConditions">Contains a partials query with only conditions</param>
-        /// <param name="objType">Contains the type of the choosen object to create the auto select query</param>
-        /// <returns></returns>
-        public static SqlBuilder GenerateAutoSelectClauseFromPocoObject(SqlBuilder sqlConditions, Type objType)
-        {
-            PropertyInfo[] pInfo = LothiumDataInfo.GetProperties(objType);
-            List<String> cols = new List<String>();
-            LothiumObject lothiumObj = new LothiumObject(objType);
-            SqlBuilder sql = new SqlBuilder();            
-
-            if (!sqlConditions.Sql.Contains("SELECT") && !sqlConditions.Sql.Contains("FROM"))
-            {
-                foreach (PropertyInfo pi in pInfo)
-                {
-                    cols.Add(lothiumObj.columnInfo[pi.Name].ColumnName);
-                }
-                sql.Select(cols.ToArray()).From(lothiumObj.tableInfo.TableName);
-            }
-            sql.Append(sqlConditions.Sql);
-            sql.OrderBy(string.Join(", ", (from x in lothiumObj.tableInfo.PrimaryKeys select x.PrimaryKeyName).ToArray()));
-
-            sql.ClearParameters();
-            sql.UpdateParameters(sqlConditions.Params);
-            
-            return sql;
-        }
-
-        /// <summary>
-        /// Create an Auto Select * From [Table]
-        /// This methods needs an SQL with only Where, Join, GroupBy and OrderBy Conditions and a LothiumDataInfo object
-        /// </summary>
-        /// <param name="sqlConditions">Contains a partials query with only conditions</param>
-        /// <param name="dataInfo">Contains a LothiumDataInfo object with Attributes values</param>
+        /// <param name="objType">Contains the type of the object passed</param>
         /// <param name="topElement">Contains the number of element to select</param>
-        /// <param name = "args" > Contains all the query parameter's values</param>
         /// <returns></returns>
-        public static SqlBuilder GenerateAutoSelectClauseFromPocoObject(SqlBuilder sqlConditions, Type objType, int topElement)
+        public static SqlBuilder GenerateAutoSelectClauseFromPocoObject(SqlBuilder sqlConditions, Type objType, int topElement = 0)
         {
             PropertyInfo[] pInfo = LothiumDataInfo.GetProperties(objType);
-            List<String> cols = new List<String>();
             LothiumObject lothiumObj = new LothiumObject(objType);
+            List<String> cols = new List<String>();
             SqlBuilder sql = new SqlBuilder();
 
             if (!sqlConditions.Sql.Contains("SELECT") && !sqlConditions.Sql.Contains("FROM"))
             {
+                // Retrive all the poco object columns
                 foreach (PropertyInfo pi in pInfo)
                 {
                     cols.Add(lothiumObj.columnInfo[pi.Name].ColumnName);
                 }
-                sql.SelectTop(topElement, cols.ToArray()).From(lothiumObj.tableInfo.TableName);
+
+                // Define if the query is a 'Select *' or a 'Select Top 1 *'
+                if (topElement > 0)
+                {
+                    sql.SelectTop(topElement, cols.ToArray()).From(lothiumObj.tableInfo.TableName);
+                }
+                else
+                {
+                    sql.Select(cols.ToArray()).From(lothiumObj.tableInfo.TableName);
+                }
             }
             sql.Append(sqlConditions.Sql);
-            sql.OrderBy(string.Join(", ", (from x in lothiumObj.tableInfo.PrimaryKeys select x.PrimaryKeyName).ToArray()));
+
+            if (!sql.Sql.Contains("ORDER"))
+            {
+                sql.OrderBy(string.Join(", ", (from x in lothiumObj.tableInfo.PrimaryKeys select x.PrimaryKeyName).ToArray()));
+            }
 
             sql.ClearParameters();
             sql.UpdateParameters(sqlConditions.Params);

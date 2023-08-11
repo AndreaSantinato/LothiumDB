@@ -59,15 +59,26 @@ if (testSection == 2)
     // Tests for the FetchAll() Methods
     var res5 = db.FetchAll<TabellaDiTest>();
     res5 = db.FetchAll<TabellaDiTest>(new SqlBuilder());
-    res5 = db.FetchAll<TabellaDiTest>("SELECT * FROM TabellaDiTest", 3, 2);
-    res5 = db.FetchAll<TabellaDiTest>(new SqlBuilder().Where("[Nome] = @0", "Nome5").Where("[Descrizione] = @1", "Descrizione5"));
+    res5 = db.FetchAll<TabellaDiTest>("SELECT * FROM TabellaDiTest");
+    res5 = db.FetchAll<TabellaDiTest>(new SqlBuilder()
+        .Select("*")
+        .From("TabellaDiTest")
+        .Where("[Nome] = @0", "Property 5")
+        .Where("[Descrizione] = @1", "Property Di Test 5")
+   );
 }
 if (testSection == 3)
 {
-    var res6 = db.FetchSingle<TabellaDiTest>("Where [Nome] = @0", "Nome4");
+    var res6 = db.FetchSingle<TabellaDiTest>(@"
+        SELECT  *
+        FROM    TabellaDiTest
+        WHERE   [Nome] = @0
+    ", "Property 4");
 
     sql = new SqlBuilder();
-    sql.Select("TOP 1 *").From("TabellaDiTest").Where("[Nome] = @0", "Nome4");
+    sql.SelectTop(1, "*")
+       .From("TabellaDiTest")
+       .Where("[Nome] = @0", "Nome4");
     res6 = db.FetchSingle<TabellaDiTest>(sql);
 }
 if (testSection == 4)

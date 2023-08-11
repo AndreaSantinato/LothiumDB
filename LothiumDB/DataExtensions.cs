@@ -28,7 +28,7 @@ namespace LothiumDB
         /// <returns>First element inside the source list</returns>
         public static TSource FirstElement<TSource>(this IList<TSource> source)
         {
-            if (source == null) return default(TSource);
+            if (source == null || source.Count() == 0) return default(TSource);
             return source[0];
         }
 
@@ -40,7 +40,7 @@ namespace LothiumDB
         /// <returns>Last element inside the source list</returns>
         public static TSource LastElement<TSource>(this IList<TSource> source)
         {
-            if (source == null) return default(TSource);
+            if (source == null || source.Count() == 0) return default(TSource);
             return source[source.Count() - 1];
         }
 
@@ -53,7 +53,7 @@ namespace LothiumDB
         /// <returns>The element inside the source list at a specific index</returns>
         public static TSource ElementAtIndex<TSource>(this IList<TSource> source, int index)
         {
-            if (source == null || index > source.Count || index < 0) return default(TSource);
+            if (source == null || source.Count() == 0 || index > source.Count() || index < 0) return default(TSource);
             return source[index];
         }
     }
