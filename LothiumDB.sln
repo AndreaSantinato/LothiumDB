@@ -5,7 +5,11 @@ VisualStudioVersion = 17.4.33110.190
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "LothiumDB", "LothiumDB\LothiumDB.csproj", "{F39187A7-D7BB-4628-94A6-6300D5905FD4}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LothiumDB.Tests", "LothiumDB.Tests\LothiumDB.Tests.csproj", "{23A47F0C-5048-44DD-92A6-F46B085D19E6}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "LothiumDB.Tests", "LothiumDB.Tests\LothiumDB.Tests.csproj", "{23A47F0C-5048-44DD-92A6-F46B085D19E6}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{024D67BD-D2C2-4BA0-9F71-89ED8E7FD1AC}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{835DAB76-AB59-4F18-A2B3-B45118F3DF09}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -24,6 +28,10 @@ Global
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{F39187A7-D7BB-4628-94A6-6300D5905FD4} = {024D67BD-D2C2-4BA0-9F71-89ED8E7FD1AC}
+		{23A47F0C-5048-44DD-92A6-F46B085D19E6} = {835DAB76-AB59-4F18-A2B3-B45118F3DF09}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {80E44412-D0B4-4FEF-AAF6-763D29E20A4B}

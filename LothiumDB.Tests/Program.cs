@@ -1,8 +1,5 @@
 ﻿// System Class
 using System.Data;
-using System.Runtime.CompilerServices;
-using System.Text;
-using System.Text.RegularExpressions;
 // Custom Class
 using LothiumDB;
 using LothiumDB.Extensions;
@@ -14,7 +11,7 @@ Console.WriteLine("Start Testing Console Project");
 Database<MSSqlServerProvider> db = new Database<MSSqlServerProvider>("192.168.1.124", "SA", "SntnAndr28021998", "LothiumDB_Dev", "Italian", false, false);
 SqlBuilder? sql = null;
 
-int testSection = 8;
+int testSection = 9;
 if (testSection == 0)
 {
     sql = new SqlBuilder();
@@ -150,6 +147,39 @@ if (testSection == 8)
     page.ItemsForEachPage = 5;
     page.ItemsToBeSkipped = 3;
     var res8 = db.FetchPage<TabellaDiTest>(page);
+}
+if (testSection == 9)
+{
+    TabellaDiTest testObj = new TabellaDiTest() 
+    {
+        PropertyNome = "Property 8",
+        PropertyDescrizione = "Property Di Test 8"
+    };
+
+    try
+    {
+        db.EnableAuditMode("Andrea");
+
+        db.OpenConnection();
+        db.BeginTransaction();
+        
+        db.Insert(testObj);
+        
+        db.CommitTransaction();
+        
+        db.Update(testObj); 
+        db.Delete(testObj);
+
+        db.DisableAuditMode();
+    }
+    catch (Exception ex)
+    {
+        db.RollbackTransaction();
+    }
+    finally
+    {
+        db.CloseConnection();
+    }
 }
 
 return;

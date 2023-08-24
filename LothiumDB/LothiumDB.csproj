@@ -14,11 +14,11 @@
     <NeutralLanguage>it</NeutralLanguage>
     <PackageOutputPath></PackageOutputPath>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-	<Version>1.1.1.0</Version>
-	<AssemblyVersion>1.1.1.0</AssemblyVersion>
-	<FileVersion>1.1.1.0</FileVersion>  
+	<Version>1.1.2.0</Version>
+	<AssemblyVersion>1.1.2.0</AssemblyVersion>
+	<FileVersion>1.1.2.0</FileVersion>  
     <PackageLicenseFile>LICENSE</PackageLicenseFile>
-    <PackageReleaseNotes>Fix some error while executing the FetchAll and FetchSingle Methods</PackageReleaseNotes>
+    <PackageReleaseNotes>Fix an error inside the Open/Close Connection and inside the Begin/Rollback/Close  Transaction methods.</PackageReleaseNotes>
     <ApplicationIcon>LothiumDB.ico</ApplicationIcon>
     <PackageIcon>LothiumDB.png</PackageIcon>
     <PackageTags>Database; Data; Base; MicrosoftSQLServer; MSSqlServer; Microsoft; SQL; SQLServer; MySql; Micro-ORM; ORM; Simple-ORM</PackageTags>

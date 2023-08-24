@@ -30,23 +30,71 @@ namespace LothiumDB
         /// <summary>
         /// Contains the database's connection
         /// </summary>
-        public IDbConnection? Connection { get { return _dbConn; } private set { _dbConn = value; } }
+        public IDbConnection? Connection
+        {
+            get => _dbConn;
+            private set => _dbConn = value;
+        }
 
         /// <summary>
         /// Contains the database's transaction
         /// </summary>
-        public IDbTransaction? Transaction { get { return _dbTran; } private set { _dbTran = value; } }
+        public IDbTransaction? Transaction
+        {
+            get => _dbTran;
+            private set => _dbTran = value;
+        }
 
         /// <summary>
         /// Contains the database's provider
         /// </summary>
-        public IDbProvider? Provider { get { return _dbProv; } private set { _dbProv = value; } }
+        public IDbProvider? Provider
+        {
+            get => _dbProv;
+            private set => _dbProv = value;
+        }
 
         /// <summary>
-        /// Return the current state of the connection
-        /// True = Connection Open; False = Connection Close
+        /// Return true if the connection is open
         /// </summary>
-        public bool IsConnectionOpen { get { return ManageConnectionState(); } }
+        public bool IsConnectionOpen
+        {
+            get
+            {
+                if (_dbConn == null) return false;
+                if
+                (
+                    _dbConn.State == ConnectionState.Broken ||
+                    _dbConn.State == ConnectionState.Closed ||
+                    _dbConn.State == ConnectionState.Connecting
+                )
+                {
+                    return false;
+                }
+                return true;
+            }
+        }
+
+        /// <summary>
+        /// Return true if the connection is closed
+        /// </summary>
+        public bool IsConnectionClosed
+        {
+            get
+            {
+                if (_dbConn == null) return true;
+                if
+                (
+                    _dbConn.State == ConnectionState.Open ||
+                    _dbConn.State == ConnectionState.Executing ||
+                    _dbConn.State == ConnectionState.Fetching
+                )
+                {
+                    return false;
+                }
+                return true;
+            }
+        }
 
         #endregion
 
@@ -110,7 +158,7 @@ namespace LothiumDB
         private bool _auditExec = false;
 
         #endregion
-        
+
         #region SafeHandle Properties
 
         /// <summary>
@@ -184,151 +232,13 @@ namespace LothiumDB
         #region Database Core Methods
 
         /// <summary>
-        /// Method used to manage all the connection's states
-        /// </summary>
-        /// <param name="operationType"></param>
-        /// <returns></returns>
-        /// <exception cref="Exception"></exception>
-        private bool ManageConnection(InternalOperationType operationType)
-        {
-            try
-            {
-                if (_dbConn == null) throw new Exception("The database connection is not setted, impossible to establish a proper connection!");
-                switch (operationType)
-                {
-                    case InternalOperationType.OpenConnection:
-                        if (_dbConn.State == ConnectionState.Open) throw new Exception("The connection is already open!");
-                        if (_dbConn.State == ConnectionState.Executing) throw new Exception("The connection is currently executing operations!");
-                        if (_dbConn.State == ConnectionState.Fetching) throw new Exception("The connection is fetching data!");
-                        if (_dbConn.State == ConnectionState.Connecting) throw new Exception("The connection is tring to connecting to the database istance!");
-                        _dbConn.Open();
-                        break;
-                    case InternalOperationType.CloseConnection:
-                        if (_dbConn.State == ConnectionState.Closed) throw new Exception("The connection is already closed!");
-                        if (_dbConn.State == ConnectionState.Executing) throw new Exception("The connection is currently executing operations!");
-                        if (_dbConn.State == ConnectionState.Fetching) throw new Exception("The connection is currently fetching data!");
-                        _dbConn.Close();
-                        break;
-                }
-                return true;
-            }
-            catch (DatabaseException ex)
-            {
-                //
-                // ToDo: Write the error into the system events
-                //
-                return false;
-            }
-        }
-
-        /// <summary>
-        /// Method used to check the current connection's state
-        /// </summary>
-        /// <returns></returns>
-        private bool ManageConnectionState()
-        {
-            bool connectionStatus = false;
-            switch (_dbConn.State)
-            {
-                case ConnectionState.Open:
-                    connectionStatus = true;
-                    break;
-                case ConnectionState.Connecting:
-                    connectionStatus = false;
-                    break;
-                case ConnectionState.Executing:
-                    connectionStatus = true;
-                    break;
-                case ConnectionState.Fetching:
-                    connectionStatus = true;
-                    break;
-                case ConnectionState.Broken:
-                    connectionStatus = false;
-                    break;
-                case ConnectionState.Closed:
-                    connectionStatus = false;
-                    break;
-            }
-            return connectionStatus;
-        }
-
-        /// <summary>
-        /// Method used to manage all the transaction's states 
-        /// </summary>
-        /// <param name="operationType"></param>
-        /// <returns></returns>
-        /// <exception cref="Exception"></exception>
-        private bool ManageTransaction(InternalOperationType operationType)
-        {
-            try
-            {
-                if (_dbConn == null) throw new Exception("The database connection is not setted, impossible to establish a proper connection!");
-                switch (operationType)
-                {
-                    case InternalOperationType.BeginTransaction:
-                        _dbTran = _dbConn.BeginTransaction();
-                        break;
-                    case InternalOperationType.RollBackTransaction:
-                        if (_dbTran == null) throw new Exception("The database's transaction is not setted, impossible to rollback all the operations!");
-                        _dbTran.Rollback();
-                        _dbTran = null;
-                        break;
-                    case InternalOperationType.CommitTransaction:
-                        if (_dbTran == null) throw new Exception("The database's transaction is not setted, impossible to rollback all the operations!");
-                        _dbTran.Commit();
-                        _dbTran = null;
-                        break;
-                }
-                return true;
-            }
-            catch (DatabaseException ex)
-            {
-                //
-                // ToDo: Write the error into the system events
-                //
-                return false;
-            }
-        }
-
-        /// <summary>
-        /// Method used to manage the activation of the Audit Mode
-        /// </summary>
-        /// <param name="operationType"></param>
-        /// <param name="auditUser"></param>
-        /// <returns></returns>
-        private bool ManageAuditMode(InternalOperationType operationType, string? userForAuditMode)
-        {
-            try
-            {
-                switch (operationType)
-                {
-                    case InternalOperationType.EnableAuditMode:
-                        _auditMode = true;
-                        if (!string.IsNullOrEmpty(userForAuditMode)) _auditUser = userForAuditMode;
-                        break;
-                    case InternalOperationType.DisableAuditMode:
-                        _auditMode = false;
-                        break;
-                }
-                return true;
-            }
-            catch (DatabaseException ex)
-            {
-                //
-                // ToDo: Write the error into the system events
-                //
-                return false;
-            }
-        }
-
-        /// <summary>
         /// Generate a new Database Command based on the actual Database's Provider
         /// </summary>
         /// <param name="connection">Contains the active database connection</param>
         /// <param name="commandType">Contains the database command's type</param>
         /// <param name="sqlQuery">Contains the actual sql query</param>
         /// <param name="args">Contains all the sql query's parameters values</param>
-        /// <returns></returns>
+        /// <returns>A Database's Command</returns>
         private IDbCommand CreateCommand(CommandType commandType, string sqlQuery, params object[] args)
         {
             IDbCommand command = _dbConn.CreateCommand();
@@ -388,23 +298,14 @@ namespace LothiumDB
 
             try
             {
-                OpenConnection();
+                // Verify if the provided connection is open, otherwise generate a new exception
+                if (IsConnectionClosed) throw new Exception("The database's connection is not open or setted!!");
 
-                try
+                // Execute the provided command
+                using (cmd)
                 {
-                    // Verify if the provided connection is open, otherwise generate a new exception
-                    if (_dbConn == null) throw new Exception("The database object is not initialize!");
-
-                    // Execute the provided command
-                    using (cmd)
-                    {
-                        if (_dbTran != null) cmd.Transaction = _dbTran;
-                        objResult = (T)cmd.ExecuteScalar();
-                    }
-                }
-                catch (DatabaseException ex)
-                {
-                    throw new Exception(ex.Message, ex);
+                    if (_dbTran != null) cmd.Transaction = _dbTran;
+                    objResult = (T)cmd.ExecuteScalar();
                 }
             }
             catch (DatabaseException ex)
@@ -414,10 +315,6 @@ namespace LothiumDB
                 auditErrorMsg = ex.Message;
                 auditLevel = AuditLevels.Error;
                 objResult = default;
-            }
-            finally
-            {
-                CloseConnection();
             }
 
             // Add a new audit event inside the database table if the mode is enable
@@ -431,7 +328,6 @@ namespace LothiumDB
         /// </summary>
         /// <param name="sql">Contains the SQL object</param>
         /// <returns>An int value that count all the affected table rows</returns>
-        /// <exception cref="Exception"></exception>
         internal int ExecuteNonQuery(SqlBuilder sql)
         {
             int affectedRowOnCommand = 0;
@@ -446,23 +342,16 @@ namespace LothiumDB
             _lastCommand = sql.Sql;
             _lastSql = DatabaseUtility.FormatSQLCommandQuery(_dbProv.VariablePrefix(), sql.Sql, sql.Params);
 
+            // Main Operations
             try
             {
-                OpenConnection();
+                // Verify if the provided connection is open, otherwise generate a new exception
+                if (IsConnectionClosed) throw new Exception("The database's connection is not open or setted!!");
 
-                try
+                using (cmd)
                 {
-                    if (_dbConn == null) throw new Exception("The database object is not initialize!");
-
-                    using (cmd)
-                    {
-                        if (_dbTran != null) cmd.Transaction = _dbTran;
-                        affectedRowOnCommand = cmd.ExecuteNonQuery();
-                    }
-                }
-                catch (DatabaseException ex)
-                {
-                    throw new Exception(ex.Message, ex);
+                    if (_dbTran != null) cmd.Transaction = _dbTran;
+                    affectedRowOnCommand = cmd.ExecuteNonQuery();
                 }
             }
             catch (DatabaseException ex)
@@ -472,10 +361,6 @@ namespace LothiumDB
                 auditErrorMsg = ex.ErrorMSG;
                 auditLevel = AuditLevels.Error;
                 affectedRowOnCommand = -1;
-            }
-            finally
-            {
-                CloseConnection();
             }
 
             // Add a new audit event inside the database table if the mode is enable
@@ -509,46 +394,38 @@ namespace LothiumDB
 
             try
             {
-                OpenConnection();
+                // Verify if the provided connection is open, otherwise generate a new exception
+                if (IsConnectionClosed) throw new Exception("The database's connection is not open or setted!!");
 
-                try
+                // Check if exist a lothium object, if not will istance a new one
+                if (lothiumObject == null) lothiumObject = new LothiumObject(typeof(T));
+
+                using (cmd)
                 {
-                    if (_dbConn == null) throw new Exception("The database object is not initialize!");
+                    if (_dbTran != null) cmd.Transaction = _dbTran;
 
-                    // Check if exist a lothium object, if not will istance a new one
-                    if (lothiumObject == null) lothiumObject = new LothiumObject(typeof(T));
-
-                    using (cmd)
+                    IDataReader cmdReader = cmd.ExecuteReader();
+                    while (cmdReader.Read())
                     {
-                        if (_dbTran != null) cmd.Transaction = _dbTran;
-
-                        IDataReader cmdReader = cmd.ExecuteReader();
-                        while (cmdReader.Read())
+                        if (cmdReader.FieldCount > 0)
                         {
-                            if (cmdReader.FieldCount > 0)
+                            T? obj = (T)Activator.CreateInstance(typeof(T));
+
+                            PropertyInfo[] propertyInfo = LothiumDataInfo.GetProperties(type);
+                            foreach (PropertyInfo property in propertyInfo)
                             {
-                                T? obj = (T)Activator.CreateInstance(typeof(T));
+                                string pName = property.Name;
+                                if (lothiumObject != null) pName = lothiumObject.columnInfo[property.Name].ColumnName;
 
-                                PropertyInfo[] propertyInfo = LothiumDataInfo.GetProperties(type);
-                                foreach (PropertyInfo property in propertyInfo)
-                                {
-                                    string pName = property.Name;
-                                    if (lothiumObject != null) pName = lothiumObject.columnInfo[property.Name].ColumnName;
-
-                                    var value = cmdReader[pName];
-                                    if (value == DBNull.Value) value = null;
-                                    if (value != null) property.SetValue(obj, cmdReader[pName], null);
-                                }
-
-                                list.Add(obj);
+                                var value = cmdReader[pName];
+                                if (value == DBNull.Value) value = null;
+                                if (value != null) property.SetValue(obj, cmdReader[pName], null);
                             }
+
+                            list.Add(obj);
                         }
                     }
                 }
-                catch (DatabaseException ex)
-                {
-                    throw new Exception(ex.Message, ex);
-                }    
             }
             catch (DatabaseException ex)
             {
@@ -557,10 +434,6 @@ namespace LothiumDB
                 auditErrorMsg = ex.ErrorMSG;
                 auditLevel = AuditLevels.Error;
                 list = null;
-            }
-            finally
-            {
-                CloseConnection();
             }
 
             // Add a new audit info event inside the database table if the mode is enable
@@ -580,19 +453,26 @@ namespace LothiumDB
         /// </summary>
         public void OpenConnection()
         {
-            bool success = ManageConnection(InternalOperationType.OpenConnection);
-            if (!success)
+            try
             {
-                if (!_auditExec) NewAuditEvent(
-                    AuditLevels.Fatal,
-                    DBCommandType.Text,
-                    SqlCommandType.None,
-                    "[Open Connection Fatal Error]: impossible to complete the desire operation"
-                );
-
-                //
-                // ToDo: Writing the error inside the system events
-                //
+                if (_dbConn == null) throw new Exception("The database's connection is not setted, impossible to establish a proper connection!!");
+                if (_dbConn.State == ConnectionState.Closed || _dbConn.State == ConnectionState.Broken)
+                {
+                    _dbConn.Open();
+                }
+            }
+            catch (DatabaseException ex)
+            {
+                if (!_auditExec)
+                {
+                    NewAuditEvent
+                    (
+                        AuditLevels.Fatal,
+                        DBCommandType.Text,
+                        SqlCommandType.None,
+                        "[Open Connection Fatal Error]: impossible to complete the operation!!"
+                    );
+                }
             }
         }
 
@@ -601,19 +481,26 @@ namespace LothiumDB
         /// </summary>
         public void CloseConnection()
         {
-            bool success = ManageConnection(InternalOperationType.CloseConnection);
-            if (!success)
+            try
             {
-                if (!_auditExec) NewAuditEvent(
-                    AuditLevels.Fatal,
-                    DBCommandType.Text,
-                    SqlCommandType.None,
-                    "[Close Connection Fatal Error]: impossible to complete the desire operation"
-                );
-
-                //
-                // ToDo: Writing the error inside the system events
-                //
+                if (_dbConn == null) throw new Exception("The database's connection is not setted, impossible to establish a proper connection!!");
+                if (_dbConn.State == ConnectionState.Open)
+                {
+                    _dbConn.Close();
+                }
+            }
+            catch (DatabaseException ex)
+            {
+                if (!_auditExec)
+                {
+                    NewAuditEvent
+                    (
+                        AuditLevels.Fatal,
+                        DBCommandType.Text,
+                        SqlCommandType.None,
+                        "[Close Connection Fatal Error]: impossible to complete the operation!!"
+                    );
+                }
             }
         }
 
@@ -622,19 +509,24 @@ namespace LothiumDB
         /// </summary>
         public void BeginTransaction()
         {
-            bool success = ManageTransaction(InternalOperationType.BeginTransaction);
-            if (!success)
+            try
             {
-                if (!_auditExec) NewAuditEvent(
-                    AuditLevels.Fatal,
-                    DBCommandType.Text,
-                    SqlCommandType.None,
-                    "[Begin Transaction Fatal Error]: impossible to complete the desire operation"
-                );
-
-                //
-                // ToDo: Writing the error inside the system events
-                //
+                if (_dbConn == null || _dbConn.State != ConnectionState.Open) throw new Exception("The database's connection is closed is not setted!!");
+                if (_dbTran != null) throw new Exception("The database's transaction is already setted, impossible to begin a new one!!");
+                _dbTran = _dbConn.BeginTransaction();
+            }
+            catch (Exception ex)
+            {
+                if (!_auditExec)
+                {
+                    NewAuditEvent
+                    (
+                        AuditLevels.Fatal,
+                        DBCommandType.Text,
+                        SqlCommandType.None,
+                        "[Begin Transaction Fatal Error]: impossible to complete the operation!!"
+                    );
+                }
             }
         }
 
@@ -643,19 +535,25 @@ namespace LothiumDB
         /// </summary>
         public void CommitTransaction()
         {
-            bool success = ManageTransaction(InternalOperationType.CommitTransaction);
-            if (!success)
+            try
             {
-                if (!_auditExec) NewAuditEvent(
-                    AuditLevels.Fatal,
-                    DBCommandType.Text,
-                    SqlCommandType.None,
-                    "[Commit Transaction Fatal Error]: impossible to complete the desire operation"
-                );
-
-                //
-                // ToDo: Writing the error inside the system events
-                //
+                if (_dbConn == null) throw new Exception("The database's connection is not setted!!");
+                if (_dbTran == null) throw new Exception("The database's transaction is not setted, impossible to commit all the operations!!");
+                _dbTran.Commit();
+                _dbTran = null;
+            }
+            catch (Exception ex)
+            {
+                if (!_auditExec)
+                {
+                    NewAuditEvent
+                    (
+                        AuditLevels.Fatal,
+                        DBCommandType.Text,
+                        SqlCommandType.None,
+                        "[Commit Transaction Fatal Error]: impossible to complete the operation!!"
+                    );
+                }
             }
         }
 
@@ -664,19 +562,25 @@ namespace LothiumDB
         /// </summary>
         public void RollbackTransaction()
         {
-            bool success = ManageTransaction(InternalOperationType.RollBackTransaction);
-            if (!success)
+            try
             {
-                if (!_auditExec) NewAuditEvent(
-                    AuditLevels.Fatal,
-                    DBCommandType.Text,
-                    SqlCommandType.None,
-                    "[Rollback Transaction Fatal Error]: impossible to complete the desire operation"
-                );
-
-                //
-                // ToDo: Writing the error inside the system events
-                //
+                if (_dbConn == null) throw new Exception("The database's connection is not setted!!");
+                if (_dbTran == null) throw new Exception("The database's transaction is not setted, impossible to rollback all the operations!!");
+                _dbTran.Rollback();
+                _dbTran = null;
+            }
+            catch (Exception ex)
+            {
+                if (!_auditExec)
+                {
+                    NewAuditEvent
+                    (
+                        AuditLevels.Fatal,
+                        DBCommandType.Text,
+                        SqlCommandType.None,
+                        "[Rollback Transaction Fatal Error]: impossible to complete the operation!!"
+                    );
+                }
             }
         }
 
@@ -746,13 +650,23 @@ namespace LothiumDB
         /// </summary>
         /// <param name="userForAudit">Contains a specific user, if null will use the default one</param>
         public void EnableAuditMode(string? userForAudit = null)
-            => ManageAuditMode(InternalOperationType.EnableAuditMode, userForAudit);
+        {
+            _auditMode = true;
+            if (!string.IsNullOrEmpty(userForAudit))
+            {
+                _auditUser = userForAudit;
+            }
+        }
+
 
         /// <summary>
         /// Methods that disable the audit mode for every single database operation
         /// </summary>
         public void DisableAuditMode()
-            => ManageAuditMode(InternalOperationType.DisableAuditMode, null);
+        {
+            _auditMode = false;
+            _auditUser = String.Empty;
+        }
 
         /// <summary>
         /// Methods that add a new Audit Event inside the database dedicated table
