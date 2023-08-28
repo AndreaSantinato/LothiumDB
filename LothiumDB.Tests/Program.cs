@@ -160,25 +160,47 @@ if (testSection == 9)
     {
         db.EnableAuditMode("Andrea");
 
-        db.OpenConnection();
+        // Testing Query Method
+        sql = new SqlBuilder(@"
+            SELECT  *
+            FROM    [TabellaDiTest]
+            WHERE   [Nome] = @0
+        ", "Property 7");
+        var resQuery = db.Query<TabellaDiTest>(sql);
+
+        // Testing Scalar Method
+        sql = new SqlBuilder(@"
+            SELECT  [Nome]
+            FROM    [TabellaDiTest]
+            WHERE   [Nome] = @0
+        ", "Property 7");
+        var resScalar = db.Scalar<string>(sql);
+
+        // Testing Execute Method
+        sql = new SqlBuilder(@"
+            UPDATE  [TabellaDiTest]
+            SET     [Descrizione] = @0
+            WHERE   [Nome] = @1
+        ", "Property Di Test 7 - Aggiornata", "Property 7");
+        var resExecute = db.Execute(sql);     
+
+        // Testing Transaction Insert & Update
         db.BeginTransaction();
-        
         db.Insert(testObj);
-        
+        testObj.PropertyDescrizione = "Changed Description";
+        db.Update(testObj);
+        db.CommitTransaction();
+
+        // Testing Transaction Delete
+        db.BeginTransaction();
+        db.Delete(testObj);
         db.CommitTransaction();
         
-        db.Update(testObj); 
-        db.Delete(testObj);
-
         db.DisableAuditMode();
     }
     catch (Exception ex)
     {
         db.RollbackTransaction();
-    }
-    finally
-    {
-        db.CloseConnection();
     }
 }
 

@@ -1,5 +1,6 @@
 ﻿// System Class
 using System.Data;
+using System.Data.Common;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using Microsoft.Win32.SafeHandles;
@@ -11,6 +12,7 @@ using LothiumDB.Providers;
 using LothiumDB.Models;
 using LothiumDB.Exceptions;
 using LothiumDB.Extensions;
+using LothiumDB.Core;
 
 namespace LothiumDB
 {
@@ -19,84 +21,7 @@ namespace LothiumDB
     /// </summary>
     public class Database : IDatabase, IDisposable
     {
-        // Properties (Public & Private)
-
-        #region Connection, Transaction, Provider Properties
-
-        protected IDbConnection? _dbConn = null;
-        protected IDbTransaction? _dbTran = null;
-        protected IDbProvider? _dbProv = null;
-
-        /// <summary>
-        /// Contains the database's connection
-        /// </summary>
-        public IDbConnection? Connection
-        {
-            get => _dbConn;
-            private set => _dbConn = value;
-        }
-
-        /// <summary>
-        /// Contains the database's transaction
-        /// </summary>
-        public IDbTransaction? Transaction
-        {
-            get => _dbTran;
-            private set => _dbTran = value;
-        }
-
-        /// <summary>
-        /// Contains the database's provider
-        /// </summary>
-        public IDbProvider? Provider
-        {
-            get => _dbProv;
-            private set => _dbProv = value;
-        }
-
-        /// <summary>
-        /// Return true if the connection is open
-        /// </summary>
-        public bool IsConnectionOpen
-        {
-            get
-            {
-                if (_dbConn == null) return false;
-                if
-                (
-                    _dbConn.State == ConnectionState.Broken ||
-                    _dbConn.State == ConnectionState.Closed ||
-                    _dbConn.State == ConnectionState.Connecting
-                )
-                {
-                    return false;
-                }
-                return true;
-            }
-        }
-
-        /// <summary>
-        /// Return true if the connection is closed
-        /// </summary>
-        public bool IsConnectionClosed
-        {
-            get
-            {
-                if (_dbConn == null) return true;
-                if
-                (
-                    _dbConn.State == ConnectionState.Open ||
-                    _dbConn.State == ConnectionState.Executing ||
-                    _dbConn.State == ConnectionState.Fetching
-                )
-                {
-                    return false;
-                }
-                return true;
-            }
-        }
-
-        #endregion
+        // Last Sql And Command Properties
 
         #region LastSql, LastCommand Properties
 
@@ -106,14 +31,24 @@ namespace LothiumDB
         /// <summary>
         /// Contains the complete last executed query with all parameters replace
         /// </summary>
-        public String? LastSql { get { return _lastSql; } private set { _lastSql = value; } }
+        public String? LastSql
+        {
+            get => _lastSql;
+            private set => _lastSql = value;
+        }
 
         /// <summary>
         /// Contains the last executed query without parameters replace
         /// </summary>
-        public String? LastCommand { get { return _lastCommand; } private set { _lastCommand = value; } }
+        public String? LastCommand
+        {
+            get => _lastCommand;
+            private set => _lastCommand = value;
+        }
 
         #endregion
+
+        // Last Generated Exception Properties
 
         #region Database Exception Property
 
@@ -125,6 +60,8 @@ namespace LothiumDB
         public DatabaseException? LastError { get { return _lastExcep; } private set { _lastExcep = value; } }
 
         #endregion
+
+        // Query TimeOut Properties
 
         #region Command TimeOut Properties
 
@@ -140,24 +77,7 @@ namespace LothiumDB
 
         #endregion
 
-        #region Audit Properties
-
-        /// <summary>
-        /// Indicate if the audit table will be populated or not
-        /// </summary>
-        private bool _auditMode = false;
-
-        /// <summary>
-        /// Indicate the default user that will add in the audit table for each operation
-        /// </summary>
-        private string _auditUser = "LothiumDB";
-
-        /// <summary>
-        /// Indicate if the audit is currently executing an operation
-        /// </summary>
-        private bool _auditExec = false;
-
-        #endregion
+        // Dispose Handle Properties
 
         #region SafeHandle Properties
 
@@ -184,13 +104,9 @@ namespace LothiumDB
         /// <param name="connectionString">Contains the connection string</param>
         public Database(IDbProvider provider, string connectionString)
         {
-            // Set the choosen provider
+            // Set the choosen connectionstring and database's provider
             _dbProv = provider;
-
-            // Set the connection and the transaction
-            _dbConn = DatabaseUtility.GenerateConnection(provider.ProviderType(), connectionString);
-            _dbConn.ConnectionString = connectionString;
-            _dbTran = null;
+            _dbConnection = new DatabaseConnectionObjet(provider, connectionString);
 
             // Set the remaining properties
             _lastSql = String.Empty;
@@ -207,7 +123,7 @@ namespace LothiumDB
         /// <summary cref="Database"></summary>
         /// <param name="provider">Contains the db's provider</param>
         /// <param name="args">Contains all the arguments needed for creating the connection string</param>
-        public Database(IDbProvider provider, params object[] args) : this(provider, provider.GenerateConnectionString(args)) { }
+        public Database(IDbProvider provider, params object[] args) : this(provider, provider.CreateConnectionString(args)) { }
 
         /// <summary>
         /// Protected Method Of The Dispose Pattern
@@ -234,18 +150,38 @@ namespace LothiumDB
         /// <summary>
         /// Generate a new Database Command based on the actual Database's Provider
         /// </summary>
-        /// <param name="connection">Contains the active database connection</param>
         /// <param name="commandType">Contains the database command's type</param>
-        /// <param name="sqlQuery">Contains the actual sql query</param>
-        /// <param name="args">Contains all the sql query's parameters values</param>
+        /// <param name="sql">Contains the actual sql query and all the parameters values</param>
         /// <returns>A Database's Command</returns>
-        private IDbCommand CreateCommand(CommandType commandType, string sqlQuery, params object[] args)
+        private IDbCommand CreateCommand(CommandType commandType, SqlBuilder sql)
         {
-            IDbCommand command = _dbConn.CreateCommand();
+            IDbCommand? command = null;
+
+            if (_dbProv == null) throw new ArgumentNullException(nameof(_dbProv));
+            if (_dbConnection == null) throw new ArgumentNullException(nameof(_dbConnection));
+            if (sql == null) throw new ArgumentNullException(nameof(sql));
+            if (String.IsNullOrEmpty(sql.Sql)) throw new ArgumentNullException(nameof(sql.Sql));
+
             try
             {
+                IDbConnection? conn = null;
+                IDbTransaction? trann = null;
+
+                if (_dbTransaction != null) 
+                {
+                    conn = _dbTransaction.Connection;
+                    trann = _dbTransaction.Transaction;       
+                }
+                else
+                {
+                    conn = _dbConnection.DatabaseConnection;
+                    trann = null;
+                }
+
+                command = conn.CreateCommand();
+                command.Transaction = trann;
+                command.CommandText = sql.Sql;
                 command.CommandType = commandType;
-                command.CommandText = sqlQuery;
                 switch (commandType)
                 {
                     case CommandType.Text:
@@ -264,14 +200,22 @@ namespace LothiumDB
                         //
                         break;
                 }
-                DatabaseUtility.AddParameters(_dbProv, ref command, args);
+                DatabaseUtility.AddParameters(_dbProv, ref command, sql.Params);
             }
             catch (DatabaseException ex)
             {
-                //
-                // ToDo: Export this error outside this methods and track it
-                //
+                if (!_auditExec)
+                {
+                    NewAuditEvent
+                    (
+                        AuditLevels.Fatal,
+                        DBCommandType.Text,
+                        SqlCommandType.None,
+                        "[Create Database's Command Fatal Error]: impossible to complete the operation!!"
+                    );
+                }
             }
+
             return command;
         }
 
@@ -285,26 +229,20 @@ namespace LothiumDB
         internal T ExecuteScalar<T>(SqlBuilder sql)
         {
             T? objResult = default;
-            IDbCommand cmd = CreateCommand(CommandType.Text, sql.Sql, sql.Params);
 
             // Audit Parameters
             AuditLevels auditLevel = AuditLevels.Info;
             String? auditErrorMsg = String.Empty;
-
-            if (_dbProv == null || _dbConn == null || cmd == null || sql == null || String.IsNullOrEmpty(sql.Sql)) return objResult;
 
             _lastCommand = sql.Sql;
             _lastSql = DatabaseUtility.FormatSQLCommandQuery(_dbProv.VariablePrefix(), sql.Sql, sql.Params);
 
             try
             {
-                // Verify if the provided connection is open, otherwise generate a new exception
-                if (IsConnectionClosed) throw new Exception("The database's connection is not open or setted!!");
+                OpenConnection();
 
-                // Execute the provided command
-                using (cmd)
+                using (IDbCommand cmd = CreateCommand(CommandType.Text, sql))
                 {
-                    if (_dbTran != null) cmd.Transaction = _dbTran;
                     objResult = (T)cmd.ExecuteScalar();
                 }
             }
@@ -315,6 +253,10 @@ namespace LothiumDB
                 auditErrorMsg = ex.Message;
                 auditLevel = AuditLevels.Error;
                 objResult = default;
+            }
+            finally
+            {
+                CloseConnection();
             }
 
             // Add a new audit event inside the database table if the mode is enable
@@ -331,13 +273,10 @@ namespace LothiumDB
         internal int ExecuteNonQuery(SqlBuilder sql)
         {
             int affectedRowOnCommand = 0;
-            IDbCommand cmd = CreateCommand(CommandType.Text, sql.Sql, sql.Params);
 
             // Audit Parameters
             AuditLevels auditLevel = AuditLevels.Info;
             String? auditErrorMsg = String.Empty;
-
-            if (_dbProv == null || _dbConn == null || cmd == null || sql == null || String.IsNullOrEmpty(sql.Sql)) return 0;
 
             _lastCommand = sql.Sql;
             _lastSql = DatabaseUtility.FormatSQLCommandQuery(_dbProv.VariablePrefix(), sql.Sql, sql.Params);
@@ -345,12 +284,10 @@ namespace LothiumDB
             // Main Operations
             try
             {
-                // Verify if the provided connection is open, otherwise generate a new exception
-                if (IsConnectionClosed) throw new Exception("The database's connection is not open or setted!!");
+                OpenConnection();
 
-                using (cmd)
+                using (IDbCommand cmd = CreateCommand(CommandType.Text, sql))
                 {
-                    if (_dbTran != null) cmd.Transaction = _dbTran;
                     affectedRowOnCommand = cmd.ExecuteNonQuery();
                 }
             }
@@ -361,6 +298,10 @@ namespace LothiumDB
                 auditErrorMsg = ex.ErrorMSG;
                 auditLevel = AuditLevels.Error;
                 affectedRowOnCommand = -1;
+            }
+            finally
+            {
+                CloseConnection();
             }
 
             // Add a new audit event inside the database table if the mode is enable
@@ -384,26 +325,20 @@ namespace LothiumDB
             AuditLevels auditLevel = AuditLevels.Info;
             String? auditErrorMsg = String.Empty;
 
-            var cmd = CreateCommand(CommandType.Text, sql.Sql, sql.Params);
             var list = new List<T>();
-
-            if (_dbProv == null || _dbConn == null || cmd == null || sql == null || String.IsNullOrEmpty(sql.Sql)) return null;
 
             _lastCommand = sql.Sql;
             _lastSql = DatabaseUtility.FormatSQLCommandQuery(_dbProv.VariablePrefix(), sql.Sql, sql.Params);
 
             try
             {
-                // Verify if the provided connection is open, otherwise generate a new exception
-                if (IsConnectionClosed) throw new Exception("The database's connection is not open or setted!!");
+                OpenConnection();
 
                 // Check if exist a lothium object, if not will istance a new one
                 if (lothiumObject == null) lothiumObject = new LothiumObject(typeof(T));
 
-                using (cmd)
+                using (IDbCommand cmd = CreateCommand(CommandType.Text, sql))
                 {
-                    if (_dbTran != null) cmd.Transaction = _dbTran;
-
                     IDataReader cmdReader = cmd.ExecuteReader();
                     while (cmdReader.Read())
                     {
@@ -435,6 +370,10 @@ namespace LothiumDB
                 auditLevel = AuditLevels.Error;
                 list = null;
             }
+            finally
+            {
+                CloseConnection();
+            }
 
             // Add a new audit info event inside the database table if the mode is enable
             if (!_auditExec) NewAuditEvent(auditLevel, DBCommandType.Text, DatabaseUtility.DefineSQLCommandType(sql.Sql), auditErrorMsg);
@@ -444,21 +383,30 @@ namespace LothiumDB
 
         #endregion
 
-        // Connection & Transaction Methods
+        // Connection, Transaction, Provider -> Properties & Methods
 
-        #region Connection & Transaction Managing Methods
+        #region Connection Properties & Methods
+
+        internal DatabaseConnectionObjet? _dbConnection = null;
+
+        /// <summary>
+        /// Contains the database's connection
+        /// </summary>
+        public IDbConnection? Connection
+        {
+            get => _dbConnection?.DatabaseConnection;
+        }
 
         /// <summary>
         /// Open a new Database Connection for the selected Database's Provider
         /// </summary>
-        public void OpenConnection()
+        internal void OpenConnection()
         {
             try
             {
-                if (_dbConn == null) throw new Exception("The database's connection is not setted, impossible to establish a proper connection!!");
-                if (_dbConn.State == ConnectionState.Closed || _dbConn.State == ConnectionState.Broken)
+                if (_dbTransaction == null) 
                 {
-                    _dbConn.Open();
+                    _dbConnection?.OpenDatabaseConnection();
                 }
             }
             catch (DatabaseException ex)
@@ -479,14 +427,13 @@ namespace LothiumDB
         /// <summary>
         /// Close the active Database Connection for the selected Database's Provider
         /// </summary>
-        public void CloseConnection()
+        internal void CloseConnection()
         {
             try
             {
-                if (_dbConn == null) throw new Exception("The database's connection is not setted, impossible to establish a proper connection!!");
-                if (_dbConn.State == ConnectionState.Open)
+                if (_dbTransaction == null)
                 {
-                    _dbConn.Close();
+                    _dbConnection?.CloseDatabaseConnection();
                 }
             }
             catch (DatabaseException ex)
@@ -504,6 +451,12 @@ namespace LothiumDB
             }
         }
 
+        #endregion
+
+        #region Transaction Properties & Methods
+
+        internal DatabaseTransactionObjet? _dbTransaction = null;
+
         /// <summary>
         /// Start a new Database Transaction for the Open Connection for the selected Database's Provider
         /// </summary>
@@ -511,9 +464,8 @@ namespace LothiumDB
         {
             try
             {
-                if (_dbConn == null || _dbConn.State != ConnectionState.Open) throw new Exception("The database's connection is closed is not setted!!");
-                if (_dbTran != null) throw new Exception("The database's transaction is already setted, impossible to begin a new one!!");
-                _dbTran = _dbConn.BeginTransaction();
+                _dbTransaction = new DatabaseTransactionObjet(_dbConnection);
+                _dbTransaction.BeginDatabaseTransaction();
             }
             catch (Exception ex)
             {
@@ -537,10 +489,10 @@ namespace LothiumDB
         {
             try
             {
-                if (_dbConn == null) throw new Exception("The database's connection is not setted!!");
-                if (_dbTran == null) throw new Exception("The database's transaction is not setted, impossible to commit all the operations!!");
-                _dbTran.Commit();
-                _dbTran = null;
+                if ( _dbTransaction != null )
+                {
+                    _dbTransaction.CommitDatabaseTransaction();
+                }
             }
             catch (Exception ex)
             {
@@ -564,10 +516,10 @@ namespace LothiumDB
         {
             try
             {
-                if (_dbConn == null) throw new Exception("The database's connection is not setted!!");
-                if (_dbTran == null) throw new Exception("The database's transaction is not setted, impossible to rollback all the operations!!");
-                _dbTran.Rollback();
-                _dbTran = null;
+                if (_dbTransaction != null)
+                {
+                    _dbTransaction.RollbackDatabaseTransaction();
+                }
             }
             catch (Exception ex)
             {
@@ -586,6 +538,21 @@ namespace LothiumDB
 
         #endregion
 
+        #region Provider Properties
+
+        protected IDbProvider? _dbProv = null;
+
+        /// <summary>
+        /// Contains the database's provider
+        /// </summary>
+        public IDbProvider? Provider
+        {
+            get => _dbProv;
+            private set => _dbProv = value;
+        }
+
+        #endregion
+
         // Base Methods
 
         #region Scalar, Execute, Query Commands
@@ -596,7 +563,8 @@ namespace LothiumDB
         /// <typeparam name="T">Contains the type for the returned object</typeparam>
         /// <param name="sql">Contains the SQL object</param>
         /// <returns>A value based of the object type</returns>
-        public T Scalar<T>(SqlBuilder sql) => ExecuteScalar<T>(sql);
+        public T Scalar<T>(SqlBuilder sql)
+            => ExecuteScalar<T>(sql);
 
         /// <summary>
         /// Invoke the DB Scalar command in the Database Istance and return a single value of a specific object type
@@ -605,14 +573,16 @@ namespace LothiumDB
         /// <param name="sql">Contains the query command to be executed</param>
         /// <param name="args">Contains all the extra arguments of the query</param>
         /// <returns>A value based of the object type</returns>
-        public T Scalar<T>(string sql, params object[] args) => Scalar<T>(new SqlBuilder(sql, args));
+        public T Scalar<T>(string sql, params object[] args)
+            => Scalar<T>(new SqlBuilder(sql, args));
 
         /// <summary>
         /// Invoke the DB NonQuery command in the Database Istance and return the number of completed operations
         /// </summary>
         /// <param name="sql">Contains the SQL object</param>
         /// <returns>An int value that count all the affected table rows</returns>
-        public int Execute(SqlBuilder sql) => ExecuteNonQuery(sql);
+        public int Execute(SqlBuilder sql)
+            => ExecuteNonQuery(sql);
 
         /// <summary>
         /// Invoke the DB NonQuery command in the Database Istance and return the number of completed operations
@@ -620,7 +590,8 @@ namespace LothiumDB
         /// <param name="sql">Contains the query command to be executed</param>
         /// <param name="args">Contains all the extra arguments of the query</param>
         /// <returns>An int value that count all the affected table rows</returns>
-        public int Execute(string sql, params object[] args) => Execute(new SqlBuilder(sql, args));
+        public int Execute(string sql, params object[] args)
+            => Execute(new SqlBuilder(sql, args));
 
         /// <summary>
         /// Invoke the DB Query command in the Database Istance and cast it to a specific object type
@@ -628,7 +599,8 @@ namespace LothiumDB
         /// <typeparam name="T">Contains the type for the returned object</typeparam>
         /// <param name="sql">Contains the SQL object</param>
         /// <returns>A value based of the object type</returns>
-        public List<T> Query<T>(SqlBuilder sql) => ExecuteQuery<T>(sql);
+        public List<T> Query<T>(SqlBuilder sql)
+            => ExecuteQuery<T>(sql);
 
         /// <summary>
         /// Invoke the DB Query command in the Database Istance and cast it to a specific object type
@@ -637,13 +609,29 @@ namespace LothiumDB
         /// <param name="sql">Contains the query command to be executed</param>
         /// <param name="args">Contains all the extra arguments of the query</param>
         /// <returns>A value based of the object type</returns>
-        public List<T> Query<T>(string sql, params object[] args) => Query<T>(new SqlBuilder(sql, args));
+        public List<T> Query<T>(string sql, params object[] args)
+            => Query<T>(new SqlBuilder(sql, args));
 
         #endregion
 
-        // Audit Methods
+        // Audit -> Properties & Methods
 
-        #region Audit Methods
+        #region Audit Properties & Methods
+
+        /// <summary>
+        /// Indicate if the audit table will be populated or not
+        /// </summary>
+        private bool _auditMode = false;
+
+        /// <summary>
+        /// Indicate the default user that will add in the audit table for each operation
+        /// </summary>
+        private string _auditUser = "LothiumDB";
+
+        /// <summary>
+        /// Indicate if the audit is currently executing an operation
+        /// </summary>
+        private bool _auditExec = false;
 
         /// <summary>
         /// Methods that enable the audit mode for every single database operation

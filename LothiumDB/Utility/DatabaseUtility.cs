@@ -64,41 +64,6 @@ namespace LothiumDB.Helpers
             return false;
         }
 
-        public static IDbConnection GenerateConnection(ProviderTypes type, string connectionString)
-        {
-            IDbConnection? dbConnection = null;
-            try
-            {
-                switch (type)
-                {
-                    case ProviderTypes.None:
-                        break;
-                    case ProviderTypes.MSSql:
-                        dbConnection = new SqlConnection(connectionString);
-                        break;
-                    case ProviderTypes.MySql:
-                        dbConnection = new MySql.Data.MySqlClient.MySqlConnection(connectionString);
-                        break;
-                    case ProviderTypes.Oracle:
-                        //
-                        // ToDo: To Implement
-                        //
-                        break;
-                    case ProviderTypes.Firebird:
-                        //
-                        // ToDo: To Implement
-                        //
-                        break;
-                }
-            }
-            catch (Exception ex)
-            {
-                dbConnection = null;
-            }
-
-            return dbConnection;
-        }
-
         /// <summary>
         /// Retrieve all the parameter's variables inside a sql query
         /// </summary>

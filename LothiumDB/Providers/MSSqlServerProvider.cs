@@ -1,18 +1,13 @@
 ﻿// System Class
 using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using System.Data;
-using System.Collections;
-using System.Xml.Linq;
 // Custom Class
-using Microsoft.Data.SqlClient;
 using LothiumDB.Helpers;
 using LothiumDB.Enumerations;
 using LothiumDB.Interfaces;
 using LothiumDB.Extensions;
+// NuGet Packages
+using Microsoft.Data.SqlClient;
 
 namespace LothiumDB.Providers
 {
@@ -25,7 +20,7 @@ namespace LothiumDB.Providers
 
         public string VariablePrefix() => "@";
 
-        public string GenerateConnectionString(params object[] args)
+        public string CreateConnectionString(params object[] args)
         {
             foreach (object arg in args)
             {
@@ -49,6 +44,12 @@ namespace LothiumDB.Providers
             };
 
             return MSSqlConnStringBuilder.ConnectionString;
+        }
+
+        public IDbConnection CreateConnection(string connectionString)
+        {
+            if (connectionString == null) throw new ArgumentNullException(nameof(connectionString));
+            return new SqlConnection(connectionString);
         }
 
         public SqlBuilder BuildPageQuery<T>(PageObject<T> pageObj, SqlBuilder sql) 

@@ -5,14 +5,14 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Data;
-using MySql.Data.Common;
-
 // Custom Class
-using MySql.Data.MySqlClient;
 using LothiumDB.Helpers;
 using LothiumDB.Enumerations;
 using LothiumDB.Interfaces;
 using LothiumDB.Extensions;
+// NuGet Packages
+using MySql.Data.Common;
+using MySql.Data.MySqlClient;
 
 namespace LothiumDB.Providers
 {
@@ -25,7 +25,7 @@ namespace LothiumDB.Providers
 
         public string VariablePrefix() => "@";
 
-        public string GenerateConnectionString(params object[] args)
+        public string CreateConnectionString(params object[] args)
         {
             foreach (object arg in args)
             {
@@ -45,6 +45,12 @@ namespace LothiumDB.Providers
             };
 
             return MariaDBConnStringBuilder.ConnectionString;
+        }
+
+        public IDbConnection CreateConnection(string connectionString)
+        {
+            if (connectionString == null) throw new ArgumentNullException(nameof(connectionString));
+            return new MySqlConnection(connectionString);
         }
 
         public SqlBuilder BuildPageQuery<T>(PageObject<T> pageObj, SqlBuilder sql)

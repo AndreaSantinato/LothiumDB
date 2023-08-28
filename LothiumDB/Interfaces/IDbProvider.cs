@@ -15,11 +15,17 @@ namespace LothiumDB.Interfaces
     public interface IDbProvider
     {
         /// <summary>
-        /// Genereate a new Specific Connection String for the specific Database Connection provider's type
+        /// Create a new Specific Connection String for the specific Database Connection provider's type
         /// </summary>
         /// <param name="args"></param>
         /// <returns></returns>
-        abstract string GenerateConnectionString(params object[] args);
+        abstract string CreateConnectionString(params object[] args);
+
+        /// <summary>
+        /// Create a new Specific Connection from a databbase's connection string
+        /// </summary>
+        /// <returns></returns>
+        abstract IDbConnection CreateConnection(string connectionString);
 
         /// <summary>
         /// Return the Variable Character for the specific Database Connection provider's type
