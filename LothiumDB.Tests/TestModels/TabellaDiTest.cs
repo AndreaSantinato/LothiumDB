@@ -4,9 +4,11 @@ namespace LothiumDB.Tester.TestModels
 {
     [Serializable]
     [TableName("TabellaDiTest")]
-    [PrimaryKey("Nome")]
+    
     public class TabellaDiTest
     {
+        [RequiredColumn]
+        [PrimaryKey("Nome")]
         [ColumnName("Nome")]
         public string? PropertyNome { get; set; }
 

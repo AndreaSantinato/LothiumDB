@@ -1,92 +1,66 @@
 ﻿// System Class
-using System;
-using System.Data;
 using System.Text;
-using System.Runtime.InteropServices;
-// Custom Class
-using Microsoft.Win32.SafeHandles;
-using LothiumDB.Interfaces;
-using LothiumDB.Enumerations;
-using LothiumDB.Helpers;
 
 namespace LothiumDB
 {
-    public class SqlBuilder : ISqlBuilder, IDisposable
+    public sealed class SqlBuilder : ISqlBuilder, IDisposable
     {
-        #region Private Property
-
-        private string? _sql = string.Empty;
-        private object[]? _args = new object[0];
         private int _nestedFromIndex = 0;
         private int _nestedWhereIndex = 0;
-        private bool _disposedValue;
-        private SafeHandle _safeHandle = new SafeFileHandle(IntPtr.Zero, true);
-
-        #endregion
 
         #region Public Property
 
         /// <summary>
         /// Contains the Final Formatted Query
         /// </summary>
-        public string Sql { get { return _sql; } }
+        public string SqlQuery { get; internal set; }
 
         /// <summary>
         /// Contains all the Parameters to be replaced over the variables inside the Final Formatted Query
         /// </summary>
-        public object[] Params { get { return _args; } }
+        public object[] SqlParams { get; internal set; }
 
         /// <summary>
         /// Contains the count of all the Nested Clause added to the Final Formatted Query
         /// </summary>
-        public int NestedElements { get { return _nestedFromIndex + _nestedWhereIndex; } }
+        public int NestedElements => _nestedFromIndex + _nestedWhereIndex;
 
         #endregion
 
         #region Class Constructor & Destructor Methods
 
         /// <summary>
-        /// Empty Constructor
+        /// Builder for creating a new Sql Object
         /// </summary>
         public SqlBuilder()
         {
-            _sql = string.Empty;
-            _args = new object[0];
             _nestedFromIndex = 0;
             _nestedWhereIndex = 0;
+            
+            SqlQuery = string.Empty;    
+            SqlParams = Array.Empty<object>();
         }
 
         /// <summary>
-        /// Contructor with parameters
+        /// Builder for creating a new Sql Object
         /// </summary>
-        /// <param name="query"></param>
-        /// <param name="args"></param>
+        /// <param name="query">Contains the custom query</param>
+        /// <param name="args">Contains the custom query variable's values</param>
         public SqlBuilder(string query, params object[] args)
         {
-            _sql = query;
-            if (_args == null) _args = new object[0];
-            _args = DatabaseUtility.AddNewArgsToSqlParamsArray(_args, args);
             _nestedFromIndex = 0;
             _nestedWhereIndex = 0;
+            
+            SqlQuery = query;
+            SqlParams = Array.Empty<object>();
+            
+            if (args.Length > 0) UpdateParameters(args);
         }
 
         /// <summary>
-        /// Protected Method Of The Dispose Pattern
+        /// Dispose the Sql Object instance previously created
         /// </summary>
-        /// <param name="disposing">Indicate if the obgect's dispose is required</param>
-        protected virtual void Dispose(bool disposing)
-        {
-            if (!_disposedValue)
-            {
-                if (disposing) _safeHandle.Dispose();
-                _disposedValue = true;
-            }
-        }
-
-        /// <summary>
-        /// Dispose the SqlBuilder Istance Previusly Created
-        /// </summary>
-        public void Dispose() => Dispose(true);
+        public void Dispose() => GC.SuppressFinalize(this);
 
         #endregion
 
@@ -97,12 +71,12 @@ namespace LothiumDB
         /// </summary>
         /// <param name="value">Contains the value that needs to be appended to the final query result</param>
         /// <param name="args">Contains all the arguments that must be replaced on the final query result variables</param>
-        private protected void BuildQuery(object value, params object[] args)
+        private void BuildQuery(object value, params object[] args)
         {
             StringBuilder sb;
-            if (!string.IsNullOrEmpty(Sql))
+            if (!string.IsNullOrEmpty(SqlQuery))
             {
-                sb = new StringBuilder(Sql);
+                sb = new StringBuilder(SqlQuery);
                 sb.Append("\n");
             }
             else
@@ -111,28 +85,41 @@ namespace LothiumDB
             }
             sb.Append(value);
 
-            _sql = sb.ToString();
-            _args = DatabaseUtility.AddNewArgsToSqlParamsArray(Params, args);
+            SqlQuery = sb.ToString();
+            UpdateParameters(args);
         }
-
+        
         /// <summary>
         /// Update all the arguments inside the query builder
         /// </summary>
-        /// <param name="args">Contains the set of parameters that needs to be update</param>
-        public void UpdateParameters(params object[] args) => _args = DatabaseUtility.AddNewArgsToSqlParamsArray(Params, args);
+        /// <param name="newArgs">Contains the set of new parameters to add</param>
+        private void UpdateParameters(params object[] newArgs)
+        {
+            if (!newArgs.Any()) return;
+            
+            var argsLenght = SqlParams.Length + newArgs.Length;
+            var unifiedArgsArray = new object[argsLenght];
+                
+            Array.Copy(SqlParams, unifiedArgsArray, SqlParams.Length);
+            Array.Copy(newArgs, 0, unifiedArgsArray, SqlParams.Length, newArgs.Length);
+
+            SqlParams = unifiedArgsArray;
+        }
 
         /// <summary>
         /// Clear all the current saved parameters inside the query builder
         /// </summary>
-        public void ClearParameters() => _args = null;
+        private void ClearParameters() 
+            => SqlParams = Array.Empty<object>();
 
         #endregion
 
         #region Append Methods
 
-        //// <summary>
+        /// <summary>
         /// Append Element to the final Query
         /// </summary>
+        /// <param name="value">Contains all the arguments to append</param>
         /// <param name="args">Contains all the arguments to append</param>
         /// <returns>An Sql Objects With the Appended Value to the final Query result</returns>
         public SqlBuilder Append(string value, params object[] args)
@@ -148,142 +135,60 @@ namespace LothiumDB
         /// <summary>
         /// Append a Select Clause to the final Query
         /// </summary>
-        /// <param name="args">Contains all the arguments to append</param>
+        /// <param name="columns">Contains all the arguments to append</param>
         /// <returns>An Sql Objects With the Appended Value to the final Query result</returns>
-        public SqlBuilder Select(params object[] args) => Append($"SELECT {string.Join(", ", (from x in args select x.ToString()).ToArray())}");
+        public SqlBuilder Select(params object[] columns)
+            => Append($"SELECT {string.Join(", ", columns.Select(x => x.ToString()).ToArray())}");
 
         /// <summary>
-        /// Append a Select Top Clause to the final Query
+        /// Append a Select Clause to the final Query
         /// </summary>
-        /// <param name="numberOfItems">Contains the number of element to be selected</param>
-        /// <param name="args">Contains all the arguments to append</param>
+        /// <param name="topElements">Contains the number of element to be selected</param>
+        /// <param name="columns">Contains all the arguments to append</param>
         /// <returns>An Sql Objects With the Appended Value to the final Query result</returns>
-        public SqlBuilder SelectTop(int numberOfItems, params object[] args) => Append($"SELECT TOP {numberOfItems} {string.Join(", ", (from x in args select x.ToString()).ToArray())}");
+        public SqlBuilder Select(int topElements, params object[] columns)
+            => Append($"SELECT {topElements} {string.Join(", ", columns.Select(x => x.ToString()).ToArray())}");
 
         /// <summary>
         /// Append a From Clause to the final Query
         /// </summary>
-        /// <param name="args">Contains all the arguments to append</param>
+        /// <param name="table">Contains all table to append</param>
         /// <returns>An Sql Objects With the Appended Value to the final Query result</returns>
-        public SqlBuilder From(params object[] args) => Append($"FROM {string.Join(", ", (from x in args select x.ToString()).ToArray())}");
+        public SqlBuilder From(string table)
+            => Append($"FROM {table}");
+
+        /// <summary>
+        /// Append a From Clause with tables concatenation to the final Query
+        /// </summary>
+        /// <param name="tables">Contains all the tables to append</param>
+        /// <returns>An Sql Objects With the Appended Value to the final Query result</returns>
+        public SqlBuilder From(params object[] tables)
+            => Append($"FROM {string.Join(", ", tables.Select(x => x.ToString()).ToArray())}");
 
         /// <summary>
         /// Append a Nested SQL Query to the final Query
         /// </summary>
-        /// <param name="sql">Contains the Nested Query</param>
-        /// <returns></returns>
-        public SqlBuilder From(SqlBuilder sql)
+        /// <param name="sqlNested">Contains the Nested Query</param>
+        /// <returns>An Sql Objects With the Appended Value to the final Query result</returns>
+        public SqlBuilder FromNested(SqlBuilder sqlNested)
         {
             _nestedFromIndex++;
-            ClearParameters();
-            UpdateParameters(DatabaseUtility.AddNewArgsToSqlParamsArray(_args, sql.Params));
-            return Append($"FROM ({sql.Sql}) N{_nestedFromIndex}");
+            UpdateParameters(sqlNested.SqlParams);
+            Append($"FROM ({sqlNested.SqlQuery}) N{_nestedFromIndex}");
+            return this;
         }
-
-        #region Join Methods
-
-        /// <summary>
-        /// Append a Specific Join Clause to the final Query
-        /// </summary>
-        /// <param name="tableName">Contains the name of the table to join with</param>
-        /// <param name="joinType">Contains the type of join to append</param>
-        /// <param name="args">Contains all the arguments to append</param>
-        /// <returns>An Sql Objects With the Appended Value to the final Query result</returns>
-        private SqlBuilder Join(SqlCommandType joinType, string tableName, string joinConditions, params object[] args)
-        {
-            SqlBuilder sql = new SqlBuilder();
-
-            if (joinType == SqlCommandType.InnerJoin) sql.Append($"INNER JOIN {tableName}");
-            if (joinType == SqlCommandType.LeftJoin) sql.Append($"LEFT JOIN {tableName}");
-            if (joinType == SqlCommandType.RightJoin) sql.Append($"RIGHT JOIN {tableName}");
-            if (joinType == SqlCommandType.OuterJoin) sql.Append($"OUTER JOIN {tableName}");
-            if (joinType == SqlCommandType.LeftOuterJoin) sql.Append($"LEFT OUTER JOIN {tableName}");
-            if (joinType == SqlCommandType.RightOuterJoin) sql.Append($"RIGHT OUTER JOIN {tableName}");
-
-            if (!joinConditions.StartsWith("ON")) joinConditions = string.Concat("ON", joinConditions);
-            sql.Append($"ON {joinConditions}", args);
-
-            return sql;
-        }
-
-        /// <summary>
-        /// Append an Inner Join Clause To the final Query
-        /// </summary>
-        /// <param name="tableName">Contains the name of the table to join with</param>
-        /// <param name="joinConditions">Contains the clause to add in the join</param>
-        /// <param name="args">Contains all the arguments to append</param>
-        /// <returns>An Sql Objects With the Appended Value to the final Query result</returns>
-        public SqlBuilder InnerJoin(string tableName, string joinConditions, params object[] args) => Join(SqlCommandType.InnerJoin, tableName, joinConditions, args);
-
-        /// <summary>
-        /// Append a Left Join Clause To the final Query
-        /// </summary>
-        /// <param name="tableName">Contains the name of the table to join with</param>
-        /// <param name="joinConditions">Contains the clause to add in the join</param>
-        /// <param name="args">Contains all the arguments to append</param>
-        /// <returns>An Sql Objects With the Appended Value to the final Query result</returns>
-        public SqlBuilder LeftJoin(string tableName, string joinConditions, params object[] args) => Join(SqlCommandType.LeftJoin, tableName, joinConditions, args);
-
-        /// <summary>
-        /// Append a Right Join Clause To the final Query
-        /// </summary>
-        /// <param name="tableName">Contains the name of the table to join with</param>
-        /// <param name="joinConditions">Contains the clause to add in the join</param>
-        /// <param name="args">Contains all the arguments to append</param>
-        /// <returns>An Sql Objects With the Appended Value to the final Query result</returns>
-        public SqlBuilder RightJoin(string tableName, string joinConditions, params object[] args) => Join(SqlCommandType.RightJoin, tableName, joinConditions, args);
-
-        /// <summary>
-        /// Append an Outer Join Clause To the final Query
-        /// </summary>
-        /// <param name="tableName">Contains the name of the table to join with</param>
-        /// <param name="joinClause">Contains the clause to add in the join</param>
-        /// <param name="args">Contains all the arguments to append</param>
-        /// <returns>An Sql Objects With the Appended Value to the final Query result</returns>
-        public SqlBuilder OuterJoin(string tableName, string joinConditions, params object[] args) => Join(SqlCommandType.OuterJoin, tableName, joinConditions, args);
-
-        /// <summary>
-        /// Append a Left Outer Join Clause To the final Query
-        /// </summary>
-        /// <param name="tableName">Contains the name of the table to join with</param>
-        /// <param name="joinConditions">Contains the clause to add in the join</param>
-        /// <param name="args">Contains all the arguments to append</param>
-        /// <returns>An Sql Objects With the Appended Value to the final Query result</returns>
-        public SqlBuilder LeftOuterJoin(string tableName, string joinConditions, params object[] args) => Join(SqlCommandType.LeftOuterJoin, tableName, joinConditions, args);
-
-        /// <summary>
-        /// Append a Right Outer Join Clause To the final Query
-        /// </summary>
-        /// <param name="tableName">Contains the name of the table to join with</param>
-        /// <param name="joinConditions">Contains the clause to add in the join</param>
-        /// <param name="args">Contains all the arguments to append</param>
-        /// <returns>An Sql Objects With the Appended Value to the final Query result</returns>
-        public SqlBuilder RightOuterJoin(string tableName, string joinConditions, params object[] args) => Join(SqlCommandType.RightOuterJoin, tableName, joinConditions, args);
-
-        /// <summary>
-        /// Append a Full Outer Join Clause To the final Query
-        /// </summary>
-        /// <param name="tableName">Contains the name of the table to join with</param>
-        /// <param name="joinConditions">Contains the clause to add in the join</param>
-        /// <param name="args">Contains all the arguments to append</param>
-        /// <returns>An Sql Objects With the Appended Value to the final Query result</returns>
-        public SqlBuilder FullOuterJoin(string tableName, string joinConditions, params object[] args) => Join(SqlCommandType.FullOuterJoin, tableName, joinConditions, args);
-
-        #endregion
 
         /// <summary>
         /// Append a Where Clause to the final Query
         /// </summary>
-        /// <param name="args">Contains all the arguments to append</param>
+        /// <param name="sqlClause">Contains the sql where clause with/without variables</param>
+        /// <param name="args">Contains all the variable's value to add</param>
         /// <returns>An Sql Objects With the Appended Value to the final Query result</returns>
-        public SqlBuilder Where(string value, params object[] args)
+        public SqlBuilder Where(string sqlClause, params object[] args)
         {
-            if (Sql.Contains("WHERE"))
-                value = $"AND {value}";
-            else
-                value = $"WHERE {value}";
-
-            return Append(value, args);
+            var condition = SqlQuery.Contains("WHERE") ? "AND" : "WHERE";
+            Append($"{condition} {sqlClause}", args);
+            return this;
         }
 
         /// <summary>
@@ -291,10 +196,12 @@ namespace LothiumDB
         /// </summary>
         /// <param name="sql">Contains the Nested Where Clause</param>
         /// <returns></returns>
-        public SqlBuilder Where(SqlBuilder sql)
+        public SqlBuilder WhereNested(SqlBuilder sql)
         {
             _nestedWhereIndex++;
-            return Append($"({sql.Sql})");
+            UpdateParameters(sql.SqlParams);
+            Append($"({sql.SqlQuery})");
+            return this;
         }
 
         /// <summary>
@@ -302,128 +209,171 @@ namespace LothiumDB
         /// </summary>
         /// <param name="args">Contains all the arguments to append</param>
         /// <returns>An Sql Objects With the Appended Value to the final Query result</returns>
-        public SqlBuilder GroupBy(params object[] args) => Append($"GROUP BY {string.Join(", ", (from x in args select x.ToString()).ToArray())}");
+        public SqlBuilder GroupBy(params object[] args)
+            => Append($"GROUP BY {string.Join(", ", args.Select(x => x.ToString()).ToArray())}");
 
         /// <summary>
         /// Append an Order By Clause to the final Query
         /// </summary>
         /// <param name="args">Contains all the arguments to append</param>
         /// <returns>An Sql Objects With the Appended Value to the final Query result</returns>
-        public SqlBuilder OrderBy(params object[] args) => Append($"ORDER BY {string.Join(", ", (from x in args select x.ToString()).ToArray())}");
+        public SqlBuilder OrderBy(params object[] args) 
+            => Append($"ORDER BY {string.Join(", ", args.Select(x => x.ToString()).ToArray())}");
 
         #endregion
 
-        #region Insert Methods
+        #region Join Methods
+        
+        /// <summary>
+        /// Append an Inner Join Clause To the final Query
+        /// </summary>
+        /// <param name="table">Contains the name of the table to join with</param>
+        /// <param name="conditions">Contains the join conditions</param>
+        /// <param name="args">Contains the join conditions variables values</param>
+        /// <returns>An Sql Objects With the Appended Value to the final Query result</returns>
+        public SqlBuilder InnerJoin(string table, string conditions, params object[] args)
+            => Append($"INNER JOIN {table} {conditions}", args);
 
         /// <summary>
-        /// Append an Insert Into Clause to the final Query
+        /// Append a Left Join Clause To the final Query
         /// </summary>
-        /// <param name="table">Contains the name of the table to insert the data</param>
-        /// <param name="args">Contains all the arguments to append</param>
+        /// <param name="table">Contains the name of the table to join with</param>
+        /// <param name="conditions">Contains the join conditions</param>
+        /// <param name="args">Contains the join conditions variables values</param>
         /// <returns>An Sql Objects With the Appended Value to the final Query result</returns>
-        public SqlBuilder Insert(string table, params object[] args) => Append($"INSERT INTO {table} ({string.Join(", ", (from x in args select x.ToString()).ToArray())})");
+        public SqlBuilder LeftJoin(string table, string conditions, params object[] args)
+            => Append($"LEFT JOIN {table} {conditions}", args);
 
         /// <summary>
-        /// Append a Values Clause to a previus Insert Into Clause to the final Query
+        /// Append a Right Join Clause To the final Query
         /// </summary>
-        /// <param name="args">Contains all the arguments to append</param>
+        /// <param name="table">Contains the name of the table to join with</param>
+        /// <param name="conditions">Contains the join conditions</param>
+        /// <param name="args">Contains the join conditions variables values</param>
         /// <returns>An Sql Objects With the Appended Value to the final Query result</returns>
-        public SqlBuilder Values(params object[] args)
+        public SqlBuilder RightJoin(string table, string conditions, params object[] args)
+            => Append($"RIGHT JOIN {table} {conditions}", args);
+
+        /// <summary>
+        /// Append an Outer Join Clause To the final Query
+        /// </summary>
+        /// <param name="sql">Contains the outer join query</param>
+        /// <returns>An Sql Objects With the Appended Value to the final Query result</returns>
+        public SqlBuilder OuterJoin(SqlBuilder sql)
+            => Append($"OUTER JOIN {sql.SqlQuery}", sql.SqlParams);
+
+        /// <summary>
+        /// Append a Left Outer Join Clause To the final Query
+        /// </summary>
+        /// <param name="sql">Contains the left outer join query</param>
+        /// <returns>An Sql Objects With the Appended Value to the final Query result</returns>
+        public SqlBuilder LeftOuterJoin(SqlBuilder sql) 
+            => Append($"LEFT OUTER JOIN {sql.SqlQuery}", sql.SqlParams);
+
+        /// <summary>
+        /// Append a Right Outer Join Clause To the final Query
+        /// </summary>
+        /// <param name="sql">Contains the right outer join query</param>
+        /// <returns>An Sql Objects With the Appended Value to the final Query result</returns>
+        public SqlBuilder RightOuterJoin(SqlBuilder sql)
+            => Append($"RIGHT OUTER JOIN {sql.SqlQuery}", sql.SqlParams);
+
+        /// <summary>
+        /// Append a Full Outer Join Clause To the final Query
+        /// </summary>
+        /// <param name="sql">Contains the right outer join query</param>
+        /// <returns>An Sql Objects With the Appended Value to the final Query result</returns>
+        public SqlBuilder FullOuterJoin(SqlBuilder sql) 
+            => Append($"FULL OUTER JOIN {sql.SqlQuery}", sql.SqlParams);
+        
+        #endregion
+        
+        #region Insert && Update && Delete Methods
+
+        /// <summary>
+        /// Append an Insert To Table Clause to the final query
+        /// </summary>
+        /// <param name="table">Contains the table's name</param>
+        /// <param name="columns">Contains all the columns</param>
+        /// <param name="values">Contains all the columns values</param>
+        /// <returns></returns>
+        public SqlBuilder InsertIntoTable(string table, object[] columns, object[] values)
         {
-            for (int i = 0; i < args.Length; i++)
+            var insertValues = new List<string>();
+            var insertParams = new List<string>();
+            var parCount = 0;
+
+            values.ToList().ForEach(x => {
+                insertValues.Add(x.ToString());
+                insertParams.Add($"@Par{parCount}");
+                parCount++;
+            });
+            
+            var insertClause = string.Concat(
+                $"INSERT INTO {table} ({string.Join(", ", (from x in columns select x.ToString()).ToArray())})", 
+                Environment.NewLine,
+                $"VALUES ({string.Join(", ", (from x in insertParams select x.ToString()).ToArray())})"
+            );
+
+            Append(insertClause, insertValues.ToArray());
+
+            return this;
+        }
+
+        /// <summary>
+        /// Append an Update Clause to the final Query
+        /// </summary>
+        /// <param name="table">Contains the name of the table to modify</param>
+        /// <param name="setValues">Contains a KeyValue Pair for the set columns to modify (Key = Column Name, Value = Column Value)</param>
+        /// <param name="whereValues">Contains a KeyValue Pair for the where column to modify (Key = Column Name, Value = Column Value)</param>
+        /// <returns>An Sql Objects With the Appended Value to the final Query result</returns>
+        public SqlBuilder UpdateTable(string table, Dictionary<string, object> setValues, Dictionary<string, object> whereValues)
+        {
+            var values = new List<object>();
+            var updateClause = string.Empty;
+            var parCount = 0;
+
+            foreach (var item in setValues)
             {
-                if (!args[i].ToString().Contains("@") && args[i].GetType() == typeof(string)) args[i] = $"'{args[i]}'";
+                var condition = updateClause.Contains("SET") ? "," : "SET";
+                values.Add(item.Value);
+                updateClause = $"{condition} {item.Key} = @Par{parCount}";
+                parCount++;
             }
 
-            if (Sql.Contains("VALUES"))
-                return Append($", VALUES ({string.Join(", ", (from x in args select x.ToString()).ToArray())})");
-            else
-                return Append($"VALUES ({string.Join(", ", (from x in args select x.ToString()).ToArray())})");
+            Append($"UPDATE {table} {Environment.NewLine} {updateClause}", values.ToArray());
+
+            foreach (var item in whereValues)
+            {
+                Where($"{item.Key} = @Par{parCount}", item.Value);
+                parCount++;
+            }
+
+            return this;
         }
-
-        #endregion
-
-        #region Update Methods
-
-        /// <summary>
-        /// Append an Update Clause to the final Query
-        /// </summary>
-        /// <param name="table">Contains the name of the table to update the data</param>
-        /// <returns>An Sql Objects With the Appended Value to the final Query result</returns>
-        public SqlBuilder Update(string table) => Append($"UPDATE {table}");
-
-        /// <summary>
-        /// Append an Update Clause to the final Query
-        /// </summary>
-        /// <param name="table">Contains the name of the table to update the data</param>
-        /// <returns>An Sql Objects With the Appended Value to the final Query result</returns>
-        public SqlBuilder Update(string table, List<string> columns, params object[] values)
-        {
-            SqlBuilder tmpSql = new SqlBuilder();
-
-            tmpSql.Append($"UPDATE {table}");
-
-            if (columns.Count > 0 && values != null && values.Length == columns.Count)
-                for (int i = 0; i < columns.Count; i++)
-                    tmpSql.Set(columns[i], values[i]);
-
-            return Append(tmpSql.Sql);
-        }
-
-        /// <summary>
-        /// Append an Update Clause to the final Query
-        /// </summary>
-        /// <param name="column">Contains the name of the column to modify</param>
-        /// <param name="value">Contains the value of the column to modify</param>
-        /// <returns>An Sql Objects With the Appended Value to the final Query result</returns>
-        public SqlBuilder Set(string column, object value)
-        {
-            if (value.GetType() == typeof(string)) value = $"'{value}'";
-
-            if (Sql.Contains("SET"))
-                return Append($", {column} = {value}");
-            else
-                return Append($"SET {column} = {value}");
-        }
-
-        /// <summary>
-        /// Append an Update Clause to the final Query
-        /// </summary>
-        /// <param name="column">Contains the name of the column to modify</param>
-        /// <param name="value">Contains the value of the column to modify</param>
-        /// <returns>An Sql Objects With the Appended Value to the final Query result</returns>
-        public SqlBuilder Set(List<string> columns, params object[] values)
-        {
-            SqlBuilder sql = new SqlBuilder();
-            for (int i = 0; i < columns.Count(); i++) sql = Set(columns[i], values[i]);
-            return sql;
-        }
-
-        /// <summary>
-        /// Append an Update Clause to the final Query
-        /// This could ne used the updated query need the Params variables to be used
-        /// </summary>
-        /// <param name="setClause">Contains the updaye clause to apped to the final query</param>
-        /// <returns></returns>
-        public SqlBuilder Set(string query)
-        {
-            SqlBuilder sql = new SqlBuilder();
-            if (Sql.Contains("SET"))
-                return Append($", {query}");
-            else
-                return Append($"SET {query}");
-        }
-
-        #endregion
-
-        #region Delete Methods
 
         /// <summary>
         /// Append an Update Clause to the final Query
         /// </summary>
         /// <param name="table">Contains the name of the table to delete all the data or a specific ones</param>
+        /// <param name="whereValues">Contains all the where values for delete one or more specific records</param>
         /// <returns>An Sql Objects With the Appended Value to the final Query result</returns>
-        public SqlBuilder Delete(string table) => Append($"DELETE FROM {table}");
+        public SqlBuilder DeleteTable(string table, Dictionary<string, object>? whereValues = null)
+        {
+            Append($"DELETE FROM {table}");
+
+            if (whereValues != null && whereValues.Any())
+            {
+                int parCount = 0;
+                foreach (var item in whereValues)
+                {
+                    Where($"{item.Key} = @Par{parCount}", item.Value);
+                    parCount++;
+                }
+            }
+
+            return this;
+        }
 
         #endregion
     }

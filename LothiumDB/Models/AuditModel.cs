@@ -1,37 +1,36 @@
 ﻿// System Class
 using System;
-using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 // Custom Class
 using LothiumDB.Attributes;
-using LothiumDB;
 
 namespace LothiumDB.Models
 {
     [TableName("AuditEvents")]
-    [PrimaryKey("AuditID", true)]
     internal sealed class AuditModel
     {
-        [Required]
+        [RequiredColumn]
+        [PrimaryKey("AuditID", true)]
+        [ColumnName("AuditID")]
+        public int ID { get; set; }
+
+        [RequiredColumn]
         [ColumnName("AuditLevel")]
         public string? Level { get; set; }
 
-        [Required]
+        [RequiredColumn]
         [ColumnName("AuditUser")]
         public string? User { get; set; }
 
-        [Required]
+        [RequiredColumn]
         [ColumnName("ExecutedOn")]
         public DateTime ExecutedOnDate { get; set; }
 
-        [Required]
+        [RequiredColumn]
         [ColumnName("DbCommandType")]
         public string? DatabaseCommandType { get; set; }
 
-        [Required]
+        [RequiredColumn]
         [ColumnName("SqlCommandType")]
         public string? SqlCommandType { get; set; }
 

@@ -1,4 +1,5 @@
-﻿using System;
+﻿// System Class
+using System;
 using System.Globalization;
 using System.ComponentModel.DataAnnotations;
 
@@ -9,24 +10,24 @@ namespace LothiumDB.Attributes
     {
         #region Property
 
-        private readonly bool _isExcluded;
+        private readonly bool _excluded;
 
-        public bool? isExcluded { get { return _isExcluded; } }
+        public bool? IsExcluded { get => _excluded; }
 
         public override object TypeId => typeof(ExcludeColumnAttribute);
 
         #endregion
 
-        public ExcludeColumnAttribute() => _isExcluded = true;
+        public ExcludeColumnAttribute() => _excluded = true;
 
         public override bool IsValid(object value)
         {
             bool result = true;
-            if (this.isExcluded != null && this.isExcluded == true) result = true;
+            if (this.IsExcluded != null && this.IsExcluded == true) result = true;
             return result;
         }
 
-        public override string FormatErrorMessage(string name) => String.Format(CultureInfo.CurrentCulture, ErrorMessageString, name, this.isExcluded);
+        public override string FormatErrorMessage(string name) => String.Format(CultureInfo.CurrentCulture, ErrorMessageString, name, this.IsExcluded);
 
     }
 }

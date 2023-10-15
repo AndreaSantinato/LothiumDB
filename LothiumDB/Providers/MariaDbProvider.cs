@@ -10,18 +10,18 @@ using MySql.Data.MySqlClient;
 namespace LothiumDB.Providers
 {
     /// <summary>
-    /// Defines A Provider For A MySql Database Instance
+    /// Defines A Provider For A MariaDB's Database Instance
     /// </summary>
-    public class MySqlProvider : IDatabaseProvider
+    public sealed class MariaDbProvider : IDatabaseProvider
     {
-        public ProviderTypesEnum ProviderType() => ProviderTypesEnum.MySql;
+        public ProviderTypesEnum ProviderType() => ProviderTypesEnum.MariaDB;
 
         public string VariablePrefix() => "@";
 
         public string CreateConnectionString(params object[] args)
         {
             if (!args.Any()) return string.Empty;
-            return new MySqlConnectionStringBuilder()
+            return  new MySqlConnectionStringBuilder()
             {
                 DefaultCommandTimeout = 30,
                 Server = (string)args[0],

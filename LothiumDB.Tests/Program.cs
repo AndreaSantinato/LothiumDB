@@ -2,206 +2,71 @@
 using System.Data;
 // Custom Class
 using LothiumDB;
-using LothiumDB.Extensions;
-using LothiumDB.Providers;
+using LothiumDB.Configurations;
 using LothiumDB.Tester.TestModels;
 
 Console.WriteLine("Start Testing Console Project");
 
-Database<MSSqlServerProvider> db = new Database<MSSqlServerProvider>("192.168.1.124", "SA", "SntnAndr28021998", "LothiumDB_Dev", "Italian", false, false);
-SqlBuilder? sql = null;
+// Generate a new db configuration and build it //
 
-int testSection = 9;
-if (testSection == 0)
+var config = new DatabaseConfiguration();
+config.Provider
+    .AddProvider(providerName: "MSSqlServer")
+    .AddConnectionString("192.168.1.124", "SA", "SntnAndr28021998", "LothiumDB_Dev", "Italian", false, false);
+config.Audit
+    .AddAudit()
+    .SetUser(auditUser: "DatabaseAdmin");
+var db = config.BuildDatabase();
+
+// Execute test examples //
+
+// Remove all the element inside the table
+db.Execute(new SqlBuilder().DeleteTable("TabellaDiTest"));
+
+// Populate the table with six new elements
+db.Insert<TabellaDiTest>(new TabellaDiTest() { PropertyNome = "Prop1", PropertyDescrizione = "Property 1" });
+db.Insert<TabellaDiTest>(new TabellaDiTest() { PropertyNome = "Prop2", PropertyDescrizione = "Property 2" });
+db.Insert<TabellaDiTest>(new TabellaDiTest() { PropertyNome = "Prop3", PropertyDescrizione = "Property 3" });
+db.Insert<TabellaDiTest>(new TabellaDiTest() { PropertyNome = "Prop4", PropertyDescrizione = "Property 4" });
+db.Insert<TabellaDiTest>(new TabellaDiTest() { PropertyNome = "Prop5", PropertyDescrizione = "Property 5" });
+db.Insert<TabellaDiTest>(new TabellaDiTest() { PropertyNome = "Prop6", PropertyDescrizione = "Property 6" });
+
+// Retrieve an IEnumerable result
+var sql = new SqlBuilder().Select("*").From("TabellaDiTest");
+var res1 = db.Query<TabellaDiTest>(sql);
+var res2 = db.FindAll<TabellaDiTest>(sql);
+
+// Retrieve an IList result
+sql = new SqlBuilder().Select("*").From("TabellaDiTest").Where("Nome = @0", "Prop4");
+var res3 = db.FindSingle<TabellaDiTest>(sql);
+
+// Insert/Update/Delete
+try
 {
-    sql = new SqlBuilder();
-    string var1 = "Property1", var2 = "Property Di Test 1";
-    sql.Select("*").From(new SqlBuilder().Select("*").From("TabellaDiTest").Where("[Nome] = @0", var1).Where("[Descrizione] = @1", var2));
-    var res1 = db.Query<TabellaDiTest>(sql).ToDataSet();
+    db.BeginTransaction();
 
-    // Esegue il comando Scalar e restituisce un risultato come stringa
-    sql = new SqlBuilder();
-    sql.Select("Nome").From("TabellaDiTest");
-    string res2 = db.Scalar<string>(sql);
-
-    // Esegue il comando Query restituendo i dati formattati secondo l'oggetto passato
-    sql = new SqlBuilder();
-    sql.Select("*").From("TabellaDiTest");
-    List<TabellaDiTest> res3 = db.Query<TabellaDiTest>(sql);
-
-    // Esegue il comando Query restituendo i dati in un dataset
-    sql = new SqlBuilder();
-    sql.Select("*").From("TabellaDiTest");
-    DataSet res4 = db.Query<TabellaDiTest>(sql).ToDataSet();
-}
-if (testSection == 1)
-{
-    // Esegue un insert di un record all'interno di una tabella del database
-    sql = new SqlBuilder();
-    sql.Insert("TabellaDiTest", "Nome", "Descrizione").Values("Nome6", "Descrizione6");
-    int rows = db.Execute(sql);
-
-    // Esegue un update di un record all'interno di una tabella del database
-    sql = new SqlBuilder();
-    sql.Update("TabellaDiTest", new List<string>() { "Nome", "Descrizione" }, "NomeUPD6", "DescrizioneUPD6").Where("[Nome] = @0", "Nome6").Where("[Descrizione] = @1", "Descrizione6");
-    rows = db.Execute(sql);
-
-    // Esegue un delete di un record all'interno di una tabella del database
-    sql = new SqlBuilder();
-    sql.Delete("TabellaDiTest").Where("[Nome] = @0", "NomeUPD6").Where("[Descrizione] = @1", "DescrizioneUPD6");
-    rows = db.Execute(sql);
-}
-if (testSection == 2)
-{
-    // Tests for the FetchAll() Methods
-    var res5 = db.FetchAll<TabellaDiTest>();
-    res5 = db.FetchAll<TabellaDiTest>(new SqlBuilder());
-    res5 = db.FetchAll<TabellaDiTest>("SELECT * FROM TabellaDiTest");
-    res5 = db.FetchAll<TabellaDiTest>(new SqlBuilder()
-        .Select("*")
-        .From("TabellaDiTest")
-        .Where("[Nome] = @0", "Property 5")
-        .Where("[Descrizione] = @1", "Property Di Test 5")
-   );
-}
-if (testSection == 3)
-{
-    var res6 = db.FetchSingle<TabellaDiTest>(@"
-        SELECT  *
-        FROM    TabellaDiTest
-        WHERE   [Nome] = @0
-    ", "Property 4");
-
-    sql = new SqlBuilder();
-    sql.SelectTop(1, "*")
-       .From("TabellaDiTest")
-       .Where("[Nome] = @0", "Nome4");
-    res6 = db.FetchSingle<TabellaDiTest>(sql);
-}
-if (testSection == 4)
-{
-    var lstTbTest = db.FetchAll<TabellaDiTest>();
-
-    TabellaDiTest tbTst1 = new TabellaDiTest()
-    {
-        PropertyNome = "Property 7",
-        PropertyDescrizione = "Proprietà Di Test 7"
-    };
-    //db.Insert(tbTst1);
-    lstTbTest = db.FetchAll<TabellaDiTest>();
-
-    tbTst1.PropertyDescrizione = "Property Di Test 7 (Campo Aggiornato Da Codice)";
-    //db.Update(tbTst1);
-    lstTbTest = db.FetchAll<TabellaDiTest>();
-
-    //db.Delete(tbTst1);
-    lstTbTest = db.FetchAll<TabellaDiTest>();
-}
-if (testSection == 5)
-{
-    using (sql = new SqlBuilder("SELECT * FROM TabellaDiTest Where Nome = @0", "Property 1"))
-    {
-        var prop = db.FetchSingle<TabellaDiTest>(sql);
-    }
-
-    using (sql = new SqlBuilder())
-    {
-        sql.Select("*").From("TabellaDiTest").Where("Nome = @0", "Property 1");
-        var prop = db.FetchSingle<TabellaDiTest>(sql);
-    }
-}
-if (testSection == 6)
-{
-    //db.EnableAuditMode();
-
-    var lst1 = db.Query<TabellaDiTest>(new SqlBuilder("SELECT * FROM TabellaDiTest")).ToDataSet();
-
-    //db.DisableAuditMode();
-}
-if (testSection == 7)
-{
-    TabellaDiTest tbtest1 = new TabellaDiTest() 
-    {
-        PropertyNome = "NewProperty",
-        PropertyDescrizione = "New Test Property"
-    };
+    // Create a new element in the database
+    var prop7 = new TabellaDiTest() { PropertyNome = "Prop7", PropertyDescrizione = "Property 7" };
+    db.Save<TabellaDiTest>(prop7);
     
-    sql = LothiumDB.Helpers.AutoQueryGenerator.GenerateAutoSelectClauseFromPocoObject(new SqlBuilder("WHERE 1 = 1"), typeof(TabellaDiTest));
-    sql = LothiumDB.Helpers.AutoQueryGenerator.GenerateAutoSelectClauseFromPocoObject(new SqlBuilder("WHERE 1 = 1"), typeof(TabellaDiTest), 1);
-    sql = LothiumDB.Helpers.AutoQueryGenerator.GenerateInsertClauseFromPocoObject(db.Provider, tbtest1);
-    sql = LothiumDB.Helpers.AutoQueryGenerator.GenerateUpdateClauseFromPocoObject(db.Provider, tbtest1);
-    sql = LothiumDB.Helpers.AutoQueryGenerator.GenerateDeleteClauseFromPocoObject(db.Provider, tbtest1);
-
-    db.Insert(tbtest1);
-
-    tbtest1.PropertyDescrizione = "New Test Property Description";
-
-    db.Update(tbtest1);
-
-    db.Delete(tbtest1);
+    // Update the previously created element in the database
+    prop7.PropertyDescrizione = "Updated Description Of Property 7";
+    db.Save<TabellaDiTest>(prop7);
+    
+    // Delete the previously created and updated element in the database
+    db.Delete<TabellaDiTest>(prop7);
+    
+    db.CommitTransaction();
 }
-if (testSection == 8)
+catch (Exception e)
 {
-    PageObject<TabellaDiTest> page = new PageObject<TabellaDiTest>();
-    page.CurrentPage = 1;
-    page.ItemsForEachPage = 5;
-    page.ItemsToBeSkipped = 3;
-    var res8 = db.FetchPage<TabellaDiTest>(page);
+    db.RollbackTransaction();
+    Console.WriteLine(e);
 }
-if (testSection == 9)
+finally
 {
-    TabellaDiTest testObj = new TabellaDiTest() 
-    {
-        PropertyNome = "Property 8",
-        PropertyDescrizione = "Property Di Test 8"
-    };
-
-    try
-    {
-        db.EnableAuditMode("Andrea");
-
-        // Testing Query Method
-        sql = new SqlBuilder(@"
-            SELECT  *
-            FROM    [TabellaDiTest]
-            WHERE   [Nome] = @0
-        ", "Property 7");
-        var resQuery = db.Query<TabellaDiTest>(sql);
-
-        // Testing Scalar Method
-        sql = new SqlBuilder(@"
-            SELECT  [Nome]
-            FROM    [TabellaDiTest]
-            WHERE   [Nome] = @0
-        ", "Property 7");
-        var resScalar = db.Scalar<string>(sql);
-
-        // Testing Execute Method
-        sql = new SqlBuilder(@"
-            UPDATE  [TabellaDiTest]
-            SET     [Descrizione] = @0
-            WHERE   [Nome] = @1
-        ", "Property Di Test 7 - Aggiornata", "Property 7");
-        var resExecute = db.Execute(sql);     
-
-        // Testing Transaction Insert & Update
-        db.BeginTransaction();
-        db.Insert(testObj);
-        testObj.PropertyDescrizione = "Changed Description";
-        db.Update(testObj);
-        db.CommitTransaction();
-
-        // Testing Transaction Delete
-        db.BeginTransaction();
-        db.Delete(testObj);
-        db.CommitTransaction();
-        
-        db.DisableAuditMode();
-    }
-    catch (Exception ex)
-    {
-        db.RollbackTransaction();
-    }
+    db.Dispose();
+    db = null;
 }
 
 return;

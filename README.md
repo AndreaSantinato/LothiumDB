@@ -1,27 +1,20 @@
 # LothiumDB [![NuGet Version](https://img.shields.io/nuget/v/LothiumDB.svg?style=flat)](https://www.nuget.org/packages/LothiumDB/) [![NuGet Downloads](https://img.shields.io/nuget/v/LothiumDB.svg?style=flat)](https://www.nuget.org/packages/LothiumDB/)
 
-LothiumDB is a simple micro ORM for .Net applications written entirely in C# for fun and offer a lot of different methods to fecth data in and out of a database.
+LothiumDB is a simple micro ORM for .Net applications written entirely in C# for fun and offer a lot of different methods to find data in and out of a database. The library has a very simple syntax and give flexibility to the final user if he want to use a query written inside a string variable, or using the SqlBuilder class.
 
 ```csharp
-var db = new Database<DbProviderClass>(connectionString);
-var sql = new SqlBuilder().Select("*").From("TableName");
-db.Query<PocoObject>(sql);
-```
+db.query<PocoType>("SELECT * FROM TABLE");
 
-LothiumDB have a very simple syntax and give flexybility to the final user if he want to use a query written inside a string variable, or using the SqlBuilder class.
-
-```csharp
-var obj = new PocoObject();
-obj.Prop1 = "Prop1";
-obj.Prop2 = "Prop2";
-
-db.Insert(obj);
-db.Update(obj);
-db.Delete(obj);
+var obj = new PocoObject()
+{
+    Prop1 = "Prop1",
+    Prop2 = "Prop2";  
+};
+db.Insert<PocoType>(obj);
 ```
 
 LothiumDB offers the ability to work with Poco Object to make operations inside the database.
-The library work well when a Poco Object have inside it all the needed attribute, infact all the information about the associated table and column will be extracted automatically.
+The library work well when a Poco Object have inside it all the needed attribute, in fact all the information about the associated table and column will be extracted automatically.
 
 ```csharp
 using LothiumDB.Attributes;
@@ -32,14 +25,8 @@ namespace TestModels
     [PrimaryKey("Prop1")]
     public class TabellaDiTest
     {
-        [ColumnName("Prop1")]
-        public string? Property1 { get; set; }
-
-        [ColumnName("Prop2")]
-        public string? Property2 { get; set; }
-        
-		[ExcludeColumn()]
-        public string? Property3 { get; set; }
+        [ColumnName("Prop1")] public string? Property1 { get; set; }
+        [ColumnName("Prop2")] public string? Property2 { get; set; }
     }
 }
 ```
@@ -59,13 +46,26 @@ using LothiumDB;
 
 public class Program
 {
-	var db = new  Database<DbProviderClass>(connectionString); 
-	
-	var sql = new SqlBuilder().Select("*").From("TableName"); 
-	List<PocoObject> list = db.FetchAll<PocoObject>(sql);
-
-	var sql2 = new SqlBuilder().SelectTop(1, "*").From("TableName"); 
-	PocoObject pocoObj = db.FetchSingle<PocoObject>(sql);
+    // Instance the configuration object
+    var config = new DatabaseConfiguration();
+    // Set the provider settings
+    config.Provider
+        .AddProvider(providerName: "MSSqlServer")
+        .AddConnectionString(connectionString);
+    // Set the audit settings
+    config.Audit
+        .AddAudit()
+        .SetUser(auditUser: "DatabaseAdmin");
+    // Create the new db instance
+    var db = config.BuildDatabase(); 
+    
+    // Execute the first query
+    var sql = new SqlBuilder().Select("*").From("TableName"); 
+    List<PocoObject> list = db.FetchAll<PocoObject>(sql);
+    
+    // Execute the second query
+    var sql2 = new SqlBuilder().SelectTop(1, "*").From("TableName"); 
+    PocoObject pocoObj = db.FetchSingle<PocoObject>(sql);
 }
 ```
 

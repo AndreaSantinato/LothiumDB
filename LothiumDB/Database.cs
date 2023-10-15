@@ -1,37 +1,50 @@
 ﻿// System Class
 using System.Data;
-using System.Data.Common;
-using System.Reflection;
-using System.Runtime.InteropServices;
-using Microsoft.Win32.SafeHandles;
 // Custom Class
-using LothiumDB.Enumerations;
-using LothiumDB.Helpers;
-using LothiumDB.Interfaces;
-using LothiumDB.Providers;
-using LothiumDB.Models;
-using LothiumDB.Exceptions;
-using LothiumDB.Extensions;
 using LothiumDB.Core;
+using LothiumDB.Core.Helpers;
+using LothiumDB.Enumerations;
+using LothiumDB.Models;
+using LothiumDB.Providers;
+using LothiumDB.Extensions;
 
 namespace LothiumDB
 {
     /// <summary>
-    /// Default Database Class of the library, provides basic operations to the connected istance
+    /// Default Database Class of the library, provides basic operations to the connected instance
     /// </summary>
     public class Database : IDatabase, IDisposable
     {
-        // Last Sql And Command Properties
+        private DatabaseConnectionObject _dbConnection;
+        private DatabaseTransactionObject? _dbTransaction;
+        private Exception? _lastError;
+        private int _cmdTimeOut;
+        private string? _lastSql;
+        private string? _lastCommand;
+        private bool _auditMode = false;
+        private string _auditUser = "LothiumDB";
+        private bool _auditExec = false;
 
-        #region LastSql, LastCommand Properties
+        // Public Properties //
+        
+        #region Public Properties
 
-        private String? _lastSql = String.Empty;
-        private String? _lastCommand = String.Empty;
+        /// <summary>
+        /// Contains the database's connection
+        /// </summary>
+        public IDbConnection? Connection
+            => _dbConnection?.DatabaseConnection;
+
+        /// <summary>
+        /// Contains the database's provider
+        /// </summary>
+        public IDatabaseProvider? Provider
+            => _dbConnection?.DatabaseProvider;
 
         /// <summary>
         /// Contains the complete last executed query with all parameters replace
         /// </summary>
-        public String? LastSql
+        public string? LastSql
         {
             get => _lastSql;
             private set => _lastSql = value;
@@ -40,177 +53,248 @@ namespace LothiumDB
         /// <summary>
         /// Contains the last executed query without parameters replace
         /// </summary>
-        public String? LastCommand
+        public string? LastCommand
         {
             get => _lastCommand;
             private set => _lastCommand = value;
         }
 
-        #endregion
-
-        // Last Generated Exception Properties
-
-        #region Database Exception Property
-
-        private DatabaseException? _lastExcep = null;
-
         /// <summary>
         /// Contains the last database's generated error
         /// </summary>
-        public DatabaseException? LastError { get { return _lastExcep; } private set { _lastExcep = value; } }
-
-        #endregion
-
-        // Query TimeOut Properties
-
-        #region Command TimeOut Properties
-
-        /// <summary>
-        /// Private Property For The Database's Command TimeOut
-        /// </summary>
-        protected int _cmdTimeOut;
+        public Exception? LastError
+        {
+            get => _lastError;
+            private set => _lastError = value;
+        }
 
         /// <summary>
         /// Contains the database's command timeout value
         /// </summary>
-        public int CommandTimeOut { get { return _cmdTimeOut; } set { _cmdTimeOut = value; } }
-
-        #endregion
-
-        // Dispose Handle Properties
-
-        #region SafeHandle Properties
-
-        /// <summary>
-        /// Used to detect redundant calls
-        /// </summary>
-        private bool _disposedValue;
-
-        /// <summary>
-        /// Instantiate a SafeHandle instance.
-        /// </summary>
-        private SafeHandle _safeHandle = new SafeFileHandle(IntPtr.Zero, true);
-
-        #endregion
-
-        // Core Methods
-
-        #region Class Constructor & Destructor Methods
-
-        /// <summary>
-        /// Inizialize a new Database Communication object
-        /// </summary>
-        /// <param name="provider">Contains the db's provider</param>
-        /// <param name="connectionString">Contains the connection string</param>
-        public Database(IDbProvider provider, string connectionString)
+        public int CommandTimeOut
         {
-            // Set the choosen connectionstring and database's provider
-            _dbProv = provider;
-            _dbConnection = new DatabaseConnectionObjet(provider, connectionString);
-
-            // Set the remaining properties
-            _lastSql = String.Empty;
-            _lastCommand = String.Empty;
-            _lastExcep = null;
+            get => _cmdTimeOut;
+            set => _cmdTimeOut = value;
         }
 
-        /// <summary cref="Database">
-        /// By Default this method will inizialize a new Microsoft SQL Server database communication's istance
-        /// </summary>
-        /// <param name="connectionString">Contains the connection string</param>
-        public Database(string connectionString) : this(new MSSqlServerProvider(), connectionString) { }
+        #endregion
 
-        /// <summary cref="Database"></summary>
-        /// <param name="provider">Contains the db's provider</param>
-        /// <param name="args">Contains all the arguments needed for creating the connection string</param>
-        public Database(IDbProvider provider, params object[] args) : this(provider, provider.CreateConnectionString(args)) { }
+        // Class Core & Base Methods //
+        
+        #region Class Constructor & Destructor Methods
+
+        public Database(IDatabaseProvider provider, string connectionString)
+        {
+            // Set the chosen connection string and database's provider
+            _dbConnection = new DatabaseConnectionObject(provider, connectionString);
+
+            // Set the remaining properties
+            _lastSql = string.Empty;
+            _lastCommand = string.Empty;
+            _lastError = null;
+        }
+
+        public Database(IDatabaseProvider provider, params object[] args)
+        {
+            // Set the chosen connection string and database's provider
+            _dbConnection = new DatabaseConnectionObject(provider, args);
+
+            // Set the remaining properties
+            _lastSql = string.Empty;
+            _lastCommand = string.Empty;
+            _lastError = null;
+        }
+        
+        /// <summary>
+        /// Dispose the Database Instance Previously Created
+        /// </summary>
+        public void Dispose() => GC.SuppressFinalize(this);
+
+        #endregion
+        
+        #region Database Core Methods
 
         /// <summary>
-        /// Protected Method Of The Dispose Pattern
+        /// Open a new Database Connection for the selected Database's Provider
         /// </summary>
-        /// <param name="disposing">Indicate if the obgect's dispose is required</param>
-        protected virtual void Dispose(bool disposing)
+        private void OpenConnection()
         {
-            if (!_disposedValue)
+            try
             {
-                if (disposing) _safeHandle.Dispose();
-                _disposedValue = true;
+                if (_dbTransaction is null) _dbConnection?.OpenDatabaseConnection();
+            }
+            catch (Exception ex)
+            {
+                if (!_auditExec)
+                {
+                    NewAuditEvent
+                    (
+                        AuditLevelsEnum.Fatal,
+                        DBCommandTypeEnum.Text,
+                        SqlCommandTypeEnum.None,
+                        "[Open Connection Fatal Error]: impossible to complete the operation!!"
+                    );
+                }
             }
         }
 
         /// <summary>
-        /// Dispose the Database Istance Previusly Created
+        /// Close the active Database Connection for the selected Database's Provider
         /// </summary>
-        public void Dispose() => Dispose(true);
+        private void CloseConnection()
+        {
+            try
+            {
+                if (_dbTransaction is null) _dbConnection?.CloseDatabaseConnection();
+            }
+            catch (Exception ex)
+            {
+                if (!_auditExec)
+                {
+                    NewAuditEvent
+                    (
+                        AuditLevelsEnum.Fatal,
+                        DBCommandTypeEnum.Text,
+                        SqlCommandTypeEnum.None,
+                        "[Close Connection Fatal Error]: impossible to complete the operation!!"
+                    );
+                }
+            }
+        }
 
-        #endregion
+        /// <summary>
+        /// Start a new Database Transaction for the Open Connection for the selected Database's Provider
+        /// </summary>
+        public void BeginTransaction()
+        {
+            try
+            {
+                if (_dbConnection is null) throw new ArgumentNullException(nameof(_dbConnection));
+                _dbTransaction = new DatabaseTransactionObject(_dbConnection);
+                _dbTransaction.BeginDatabaseTransaction();
+            }
+            catch (Exception ex)
+            {
+                if (!_auditExec)
+                {
+                    NewAuditEvent
+                    (
+                        AuditLevelsEnum.Fatal,
+                        DBCommandTypeEnum.Text,
+                        SqlCommandTypeEnum.None,
+                        "[Begin Transaction Fatal Error]: impossible to complete the operation!!"
+                    );
+                }
+            }
+        }
 
-        #region Database Core Methods
+        /// <summary>
+        /// Close the active Database Transaction for the Open Connection for the selected Database's Provider
+        /// </summary>
+        public void CommitTransaction()
+        {
+            try
+            {
+                _dbTransaction?.CommitDatabaseTransaction();
+            }
+            catch (Exception ex)
+            {
+                if (!_auditExec)
+                {
+                    NewAuditEvent
+                    (
+                        AuditLevelsEnum.Fatal,
+                        DBCommandTypeEnum.Text,
+                        SqlCommandTypeEnum.None,
+                        "[Commit Transaction Fatal Error]: impossible to complete the operation!!"
+                    );
+                }
+            }
+        }
 
+        /// <summary>
+        /// Revert all the operations executed during the active Database Transaction for the Open Connection for the selected Database's Provider
+        /// </summary>
+        public void RollbackTransaction()
+        {
+            try
+            {
+                _dbTransaction?.RollbackDatabaseTransaction();
+            }
+            catch (Exception ex)
+            {
+                if (!_auditExec)
+                {
+                    NewAuditEvent
+                    (
+                        AuditLevelsEnum.Fatal,
+                        DBCommandTypeEnum.Text,
+                        SqlCommandTypeEnum.None,
+                        "[Rollback Transaction Fatal Error]: impossible to complete the operation!!"
+                    );
+                }
+            }
+        }
+        
         /// <summary>
         /// Generate a new Database Command based on the actual Database's Provider
         /// </summary>
         /// <param name="commandType">Contains the database command's type</param>
         /// <param name="sql">Contains the actual sql query and all the parameters values</param>
         /// <returns>A Database's Command</returns>
-        private IDbCommand CreateCommand(CommandType commandType, SqlBuilder sql)
+        private IDbCommand? CreateCommand(CommandType commandType, SqlBuilder sql)
         {
             IDbCommand? command = null;
 
-            if (_dbProv == null) throw new ArgumentNullException(nameof(_dbProv));
             if (_dbConnection == null) throw new ArgumentNullException(nameof(_dbConnection));
+            if (_dbConnection.DatabaseProvider == null) throw new ArgumentNullException(nameof(_dbConnection.DatabaseProvider));
             if (sql == null) throw new ArgumentNullException(nameof(sql));
-            if (String.IsNullOrEmpty(sql.Sql)) throw new ArgumentNullException(nameof(sql.Sql));
+            if (string.IsNullOrEmpty(sql.SqlQuery)) throw new ArgumentNullException(nameof(sql.SqlQuery));
 
             try
             {
-                IDbConnection? conn = null;
-                IDbTransaction? trann = null;
-
-                if (_dbTransaction != null) 
-                {
-                    conn = _dbTransaction.Connection;
-                    trann = _dbTransaction.Transaction;       
-                }
-                else
-                {
-                    conn = _dbConnection.DatabaseConnection;
-                    trann = null;
-                }
-
-                command = conn.CreateCommand();
-                command.Transaction = trann;
-                command.CommandText = sql.Sql;
+                command = _dbTransaction is null ? _dbConnection.DatabaseConnection?.CreateCommand() : _dbTransaction.Connection.CreateCommand();
+                if (command is null) throw new Exception(nameof(command));
+                
+                command.Transaction = _dbTransaction?.Transaction;
+                command.CommandText = sql.SqlQuery;
                 command.CommandType = commandType;
-                switch (commandType)
+
+                if (sql.SqlParams.Any())
                 {
-                    case CommandType.Text:
-                        //
-                        // TODO: 
-                        //
-                        break;
-                    case CommandType.TableDirect:
-                        //
-                        // TODO: 
-                        //
-                        break;
-                    case CommandType.StoredProcedure:
-                        //
-                        // TODO: 
-                        //
-                        break;
+                    switch (commandType)
+                    {
+                        case CommandType.Text:
+                            DatabaseHelper.AddParamsToDatabaseCommand(
+                                _dbConnection.DatabaseProvider,
+                                ref command,
+                                sql
+                            );
+                            break;
+                        case CommandType.TableDirect:
+                            //
+                            // TODO: 
+                            //
+                            break;
+                        case CommandType.StoredProcedure:
+                            //
+                            // TODO: 
+                            //
+                            break;
+                        default:
+                            throw new ArgumentOutOfRangeException(nameof(commandType), commandType, null);
+                    }
                 }
-                DatabaseUtility.AddParameters(_dbProv, ref command, sql.Params);
             }
-            catch (DatabaseException ex)
+            catch (Exception ex)
             {
                 if (!_auditExec)
                 {
                     NewAuditEvent
                     (
-                        AuditLevels.Fatal,
-                        DBCommandType.Text,
-                        SqlCommandType.None,
+                        AuditLevelsEnum.Fatal,
+                        DBCommandTypeEnum.Text,
+                        SqlCommandTypeEnum.None,
                         "[Create Database's Command Fatal Error]: impossible to complete the operation!!"
                     );
                 }
@@ -226,33 +310,35 @@ namespace LothiumDB
         /// <param name="sql">Contains the SQL object</param>
         /// <returns>A value based of the object type</returns>
         /// <exception cref="Exception"></exception>
-        internal T ExecuteScalar<T>(SqlBuilder sql)
+        private T ExecuteScalar<T>(SqlBuilder sql)
         {
-            T? objResult = default;
+            T? result = default;
 
             // Audit Parameters
-            AuditLevels auditLevel = AuditLevels.Info;
-            String? auditErrorMsg = String.Empty;
+            var auditLevel = AuditLevelsEnum.Info;
+            var auditErrorMsg = string.Empty;
 
-            _lastCommand = sql.Sql;
-            _lastSql = DatabaseUtility.FormatSQLCommandQuery(_dbProv.VariablePrefix(), sql.Sql, sql.Params);
+            _lastCommand = sql.SqlQuery;
+            _lastSql = DatabaseHelper.FormatSqlCommandQuery(_dbConnection.DatabaseProvider, sql);
 
             try
             {
                 OpenConnection();
 
-                using (IDbCommand cmd = CreateCommand(CommandType.Text, sql))
+                var cmd = CreateCommand(CommandType.Text, sql);
+                if (cmd is null) throw new Exception(nameof(cmd));
+                
+                using (cmd)
                 {
-                    objResult = (T)cmd.ExecuteScalar();
+                    result = (T)cmd.ExecuteScalar();
                 }
             }
-            catch (DatabaseException ex)
+            catch (Exception ex)
             {
                 // Add to info of the last executed command after an error
-                ex.ErrorMSG = String.Concat("[Scalar Command Error]: ", ex.Message);
-                auditErrorMsg = ex.Message;
-                auditLevel = AuditLevels.Error;
-                objResult = default;
+                auditErrorMsg = $"[Scalar Command Error]: {ex.Message}";
+                auditLevel = AuditLevelsEnum.Error;
+                result = default;
             }
             finally
             {
@@ -260,43 +346,45 @@ namespace LothiumDB
             }
 
             // Add a new audit event inside the database table if the mode is enable
-            if (!_auditExec) NewAuditEvent(auditLevel, DBCommandType.Text, DatabaseUtility.DefineSQLCommandType(sql.Sql), auditErrorMsg);
+            if (!_auditExec) NewAuditEvent(auditLevel, DBCommandTypeEnum.Text, DatabaseHelper.DefineSqlCommandType(sql.SqlQuery), auditErrorMsg);
 
-            return objResult;
+            return result;
         }
 
         /// <summary>
-        /// Invoke the DB NonQuery command in the Database Istance and return the number of completed operations
+        /// Invoke the DB NonQuery command in the Database Instance and return the number of completed operations
         /// </summary>
         /// <param name="sql">Contains the SQL object</param>
         /// <returns>An int value that count all the affected table rows</returns>
-        internal int ExecuteNonQuery(SqlBuilder sql)
+        private int ExecuteNonQuery(SqlBuilder sql)
         {
-            int affectedRowOnCommand = 0;
+            var affectedRowOnCommand = 0;
 
             // Audit Parameters
-            AuditLevels auditLevel = AuditLevels.Info;
-            String? auditErrorMsg = String.Empty;
+            var auditLevel = AuditLevelsEnum.Info;
+            var auditErrorMsg = String.Empty;
 
-            _lastCommand = sql.Sql;
-            _lastSql = DatabaseUtility.FormatSQLCommandQuery(_dbProv.VariablePrefix(), sql.Sql, sql.Params);
+            _lastCommand = sql.SqlQuery;
+            _lastSql = DatabaseHelper.FormatSqlCommandQuery(_dbConnection.DatabaseProvider, sql);
 
             // Main Operations
             try
             {
                 OpenConnection();
 
-                using (IDbCommand cmd = CreateCommand(CommandType.Text, sql))
+                var cmd = CreateCommand(CommandType.Text, sql);
+                if (cmd is null) throw new Exception(nameof(cmd));
+                
+                using (cmd)
                 {
                     affectedRowOnCommand = cmd.ExecuteNonQuery();
                 }
             }
-            catch (DatabaseException ex)
+            catch (Exception ex)
             {
                 // Add to info of the last executed command after an error
-                ex.ErrorMSG = String.Concat("[Execute Command Error]: ", ex.Message);
-                auditErrorMsg = ex.ErrorMSG;
-                auditLevel = AuditLevels.Error;
+                auditErrorMsg = $"[Execute Command Error]: {ex.Message}";
+                auditLevel = AuditLevelsEnum.Error;
                 affectedRowOnCommand = -1;
             }
             finally
@@ -305,7 +393,7 @@ namespace LothiumDB
             }
 
             // Add a new audit event inside the database table if the mode is enable
-            if (!_auditExec) NewAuditEvent(auditLevel, DBCommandType.Text, DatabaseUtility.DefineSQLCommandType(sql.Sql), auditErrorMsg);
+            if (!_auditExec) NewAuditEvent(auditLevel, DBCommandTypeEnum.Text, DatabaseHelper.DefineSqlCommandType(sql.SqlQuery), auditErrorMsg);
 
             return affectedRowOnCommand;
         }
@@ -317,57 +405,62 @@ namespace LothiumDB
         /// <param name="sql">Contains the SQL object</param>
         /// <returns>A value based of the object type</returns>
         /// <exception cref="Exception"></exception>
-        internal List<T> ExecuteQuery<T>(SqlBuilder sql, LothiumObject lothiumObject = null)
+        private IEnumerable<T> ExecuteQuery<T>(SqlBuilder sql)
         {
-            Type type = typeof(T);
+            var type = typeof(T);
 
             // Audit Parameters
-            AuditLevels auditLevel = AuditLevels.Info;
-            String? auditErrorMsg = String.Empty;
+            var auditLevel = AuditLevelsEnum.Info;
+            var auditErrorMsg = string.Empty;
 
             var list = new List<T>();
 
-            _lastCommand = sql.Sql;
-            _lastSql = DatabaseUtility.FormatSQLCommandQuery(_dbProv.VariablePrefix(), sql.Sql, sql.Params);
+            _lastCommand = sql.SqlQuery;
+            _lastSql = DatabaseHelper.FormatSqlCommandQuery(_dbConnection.DatabaseProvider, sql);
 
             try
             {
                 OpenConnection();
 
-                // Check if exist a lothium object, if not will istance a new one
-                if (lothiumObject == null) lothiumObject = new LothiumObject(typeof(T));
+                // Check if exist a lothium object, if not will instance a new one
+                var pocoObject = new PocoObject<T>();
 
-                using (IDbCommand cmd = CreateCommand(CommandType.Text, sql))
+                var cmd = CreateCommand(CommandType.Text, sql);
+                if (cmd is null) throw new Exception(nameof(cmd));
+                
+                using (cmd)
                 {
-                    IDataReader cmdReader = cmd.ExecuteReader();
+                    var cmdReader = cmd.ExecuteReader();
                     while (cmdReader.Read())
                     {
-                        if (cmdReader.FieldCount > 0)
+                        if (cmdReader.FieldCount <= 0) continue;
+                        var obj = (T)Activator.CreateInstance(typeof(T))!;
+
+                        foreach (var prop in pocoObject.GetProperties(type))
                         {
-                            T? obj = (T)Activator.CreateInstance(typeof(T));
-
-                            PropertyInfo[] propertyInfo = LothiumDataInfo.GetProperties(type);
-                            foreach (PropertyInfo property in propertyInfo)
+                            var pName = string.Empty;
+                            if (pocoObject.ColumnDataInfo is not null)
                             {
-                                string pName = property.Name;
-                                if (lothiumObject != null) pName = lothiumObject.columnInfo[property.Name].ColumnName;
-
-                                var value = cmdReader[pName];
-                                if (value == DBNull.Value) value = null;
-                                if (value != null) property.SetValue(obj, cmdReader[pName], null);
+                                foreach (var info in pocoObject.ColumnDataInfo.Where(c => c.PocoObjectProperty == prop.Name))
+                                {
+                                    pName = info.ColumnName;
+                                    break;
+                                }
                             }
-
-                            list.Add(obj);
+                            var value = string.IsNullOrEmpty(pName) ? null : cmdReader[pName];
+                            if (value == DBNull.Value) value = null;
+                            if (value != null) prop.SetValue(obj, value, null);
                         }
+
+                        list.Add(obj);
                     }
                 }
             }
-            catch (DatabaseException ex)
+            catch (Exception ex)
             {
                 // Add to info of the last executed command after an error
-                ex.ErrorMSG = String.Concat("[Query Command Error]: ", ex.Message);
-                auditErrorMsg = ex.ErrorMSG;
-                auditLevel = AuditLevels.Error;
+                auditErrorMsg = $"[Query Command Error]: {ex.Message}";
+                auditLevel = AuditLevelsEnum.Error;
                 list = null;
             }
             finally
@@ -376,185 +469,13 @@ namespace LothiumDB
             }
 
             // Add a new audit info event inside the database table if the mode is enable
-            if (!_auditExec) NewAuditEvent(auditLevel, DBCommandType.Text, DatabaseUtility.DefineSQLCommandType(sql.Sql), auditErrorMsg);
+            if (!_auditExec) NewAuditEvent(auditLevel, DBCommandTypeEnum.Text, DatabaseHelper.DefineSqlCommandType(sql.SqlQuery), auditErrorMsg);
 
             return list;
         }
 
         #endregion
-
-        // Connection, Transaction, Provider -> Properties & Methods
-
-        #region Connection Properties & Methods
-
-        internal DatabaseConnectionObjet? _dbConnection = null;
-
-        /// <summary>
-        /// Contains the database's connection
-        /// </summary>
-        public IDbConnection? Connection
-        {
-            get => _dbConnection?.DatabaseConnection;
-        }
-
-        /// <summary>
-        /// Open a new Database Connection for the selected Database's Provider
-        /// </summary>
-        internal void OpenConnection()
-        {
-            try
-            {
-                if (_dbTransaction == null) 
-                {
-                    _dbConnection?.OpenDatabaseConnection();
-                }
-            }
-            catch (DatabaseException ex)
-            {
-                if (!_auditExec)
-                {
-                    NewAuditEvent
-                    (
-                        AuditLevels.Fatal,
-                        DBCommandType.Text,
-                        SqlCommandType.None,
-                        "[Open Connection Fatal Error]: impossible to complete the operation!!"
-                    );
-                }
-            }
-        }
-
-        /// <summary>
-        /// Close the active Database Connection for the selected Database's Provider
-        /// </summary>
-        internal void CloseConnection()
-        {
-            try
-            {
-                if (_dbTransaction == null)
-                {
-                    _dbConnection?.CloseDatabaseConnection();
-                }
-            }
-            catch (DatabaseException ex)
-            {
-                if (!_auditExec)
-                {
-                    NewAuditEvent
-                    (
-                        AuditLevels.Fatal,
-                        DBCommandType.Text,
-                        SqlCommandType.None,
-                        "[Close Connection Fatal Error]: impossible to complete the operation!!"
-                    );
-                }
-            }
-        }
-
-        #endregion
-
-        #region Transaction Properties & Methods
-
-        internal DatabaseTransactionObjet? _dbTransaction = null;
-
-        /// <summary>
-        /// Start a new Database Transaction for the Open Connection for the selected Database's Provider
-        /// </summary>
-        public void BeginTransaction()
-        {
-            try
-            {
-                _dbTransaction = new DatabaseTransactionObjet(_dbConnection);
-                _dbTransaction.BeginDatabaseTransaction();
-            }
-            catch (Exception ex)
-            {
-                if (!_auditExec)
-                {
-                    NewAuditEvent
-                    (
-                        AuditLevels.Fatal,
-                        DBCommandType.Text,
-                        SqlCommandType.None,
-                        "[Begin Transaction Fatal Error]: impossible to complete the operation!!"
-                    );
-                }
-            }
-        }
-
-        /// <summary>
-        /// Close the active Database Transaction for the Open Connection for the selected Database's Provider
-        /// </summary>
-        public void CommitTransaction()
-        {
-            try
-            {
-                if ( _dbTransaction != null )
-                {
-                    _dbTransaction.CommitDatabaseTransaction();
-                }
-            }
-            catch (Exception ex)
-            {
-                if (!_auditExec)
-                {
-                    NewAuditEvent
-                    (
-                        AuditLevels.Fatal,
-                        DBCommandType.Text,
-                        SqlCommandType.None,
-                        "[Commit Transaction Fatal Error]: impossible to complete the operation!!"
-                    );
-                }
-            }
-        }
-
-        /// <summary>
-        /// Revert all the operations executed during the active Database Transaction for the Open Connection for the selected Database's Provider
-        /// </summary>
-        public void RollbackTransaction()
-        {
-            try
-            {
-                if (_dbTransaction != null)
-                {
-                    _dbTransaction.RollbackDatabaseTransaction();
-                }
-            }
-            catch (Exception ex)
-            {
-                if (!_auditExec)
-                {
-                    NewAuditEvent
-                    (
-                        AuditLevels.Fatal,
-                        DBCommandType.Text,
-                        SqlCommandType.None,
-                        "[Rollback Transaction Fatal Error]: impossible to complete the operation!!"
-                    );
-                }
-            }
-        }
-
-        #endregion
-
-        #region Provider Properties
-
-        protected IDbProvider? _dbProv = null;
-
-        /// <summary>
-        /// Contains the database's provider
-        /// </summary>
-        public IDbProvider? Provider
-        {
-            get => _dbProv;
-            private set => _dbProv = value;
-        }
-
-        #endregion
-
-        // Base Methods
-
+        
         #region Scalar, Execute, Query Commands
 
         /// <summary>
@@ -599,7 +520,7 @@ namespace LothiumDB
         /// <typeparam name="T">Contains the type for the returned object</typeparam>
         /// <param name="sql">Contains the SQL object</param>
         /// <returns>A value based of the object type</returns>
-        public List<T> Query<T>(SqlBuilder sql)
+        public IEnumerable<T> Query<T>(SqlBuilder sql)
             => ExecuteQuery<T>(sql);
 
         /// <summary>
@@ -609,30 +530,15 @@ namespace LothiumDB
         /// <param name="sql">Contains the query command to be executed</param>
         /// <param name="args">Contains all the extra arguments of the query</param>
         /// <returns>A value based of the object type</returns>
-        public List<T> Query<T>(string sql, params object[] args)
+        public IEnumerable<T> Query<T>(string sql, params object[] args)
             => Query<T>(new SqlBuilder(sql, args));
 
         #endregion
 
-        // Audit -> Properties & Methods
-
-        #region Audit Properties & Methods
-
-        /// <summary>
-        /// Indicate if the audit table will be populated or not
-        /// </summary>
-        private bool _auditMode = false;
-
-        /// <summary>
-        /// Indicate the default user that will add in the audit table for each operation
-        /// </summary>
-        private string _auditUser = "LothiumDB";
-
-        /// <summary>
-        /// Indicate if the audit is currently executing an operation
-        /// </summary>
-        private bool _auditExec = false;
-
+         // Audit Methods //
+        
+        #region Audit Methods
+        
         /// <summary>
         /// Methods that enable the audit mode for every single database operation
         /// </summary>
@@ -640,10 +546,7 @@ namespace LothiumDB
         public void EnableAuditMode(string? userForAudit = null)
         {
             _auditMode = true;
-            if (!string.IsNullOrEmpty(userForAudit))
-            {
-                _auditUser = userForAudit;
-            }
+            if (!string.IsNullOrEmpty(userForAudit)) _auditUser = userForAudit;
         }
 
 
@@ -653,7 +556,7 @@ namespace LothiumDB
         public void DisableAuditMode()
         {
             _auditMode = false;
-            _auditUser = String.Empty;
+            _auditUser = string.Empty;
         }
 
         /// <summary>
@@ -662,48 +565,47 @@ namespace LothiumDB
         /// <param name="level">Contains the level of the current action</param>
         /// <param name="cmdType">Contains the type of the current action's command</param>
         /// <param name="sqlType">Contains the type of the current action's query</param>
-        internal void NewAuditEvent(AuditLevels level, DBCommandType cmdType, SqlCommandType sqlType, string? errorMsg = null)
+        /// <param name="errorMsg">Contains an optional error message</param>
+        private void NewAuditEvent(AuditLevelsEnum level, DBCommandTypeEnum cmdType, SqlCommandTypeEnum sqlType, string? errorMsg = null)
         {
-            if (_auditMode)
+            if (!_auditMode) return;
+            if (string.IsNullOrEmpty(LastCommand) && string.IsNullOrEmpty(LastSql)) return;
+
+            // Set a true the audit action flag
+            _auditExec = true;
+
+            // Verify if the audit table already exists, if not will create it
+            if (Scalar<int>(AuditModel.GenerateQueryForCheckTableExist()) != 1) Execute(AuditModel.GenerateQueryForTableCreation());
+
+            // Insert the new event inside the audit table
+            Insert<AuditModel>(new AuditModel()
             {
-                if (String.IsNullOrEmpty(LastCommand) && String.IsNullOrEmpty(LastSql)) return;
+                Level = Enum.GetName(level.GetType(), level),
+                User = _auditUser,
+                ExecutedOnDate = DateTime.Now,
+                DatabaseCommandType = Enum.GetName(cmdType.GetType(), cmdType),
+                SqlCommandType = Enum.GetName(sqlType.GetType(), sqlType),
+                SqlCommandWithoutParams = LastCommand,
+                SqlCommandWithParams = LastSql,
+                ErrorMsg = errorMsg
+            });
 
-                // Set a true the audit action flag
-                _auditExec = true;
-
-                // Verify if the audit table already exists, if not will create it
-                if (Scalar<int>(AuditModel.GenerateQueryForCheckTableExist()) != 1) Execute(AuditModel.GenerateQueryForTableCreation());
-
-                // Insert the new event inside the audit table
-                Insert(new AuditModel()
-                {
-                    Level = Enum.GetName(level.GetType(), level),
-                    User = _auditUser,
-                    ExecutedOnDate = DateTime.Now,
-                    DatabaseCommandType = Enum.GetName(cmdType.GetType(), cmdType),
-                    SqlCommandType = Enum.GetName(sqlType.GetType(), sqlType),
-                    SqlCommandWithoutParams = LastCommand,
-                    SqlCommandWithParams = LastSql,
-                    ErrorMsg = errorMsg
-                });
-
-                // Set a false the audit action flag
-                _auditExec = false;
-            }
+            // Set a false the audit action flag
+            _auditExec = false;
         }
 
         #endregion
 
-        // Extended Methods
-
-        #region FetchAll Methods
+        // Extended Methods //
+        
+        #region FindAll Methods
 
         /// <summary>
         /// Select all the elements inside a table without specify the Sql query
         /// </summary>
         /// <returns>A value based of the object type</returns>
-        public List<T> FetchAll<T>()
-            => FetchAll<T>(AutoQueryGenerator.GenerateAutoSelectClauseFromPocoObject(new SqlBuilder(string.Empty), typeof(T)).Sql);
+        public List<T> FindAll<T>()
+            => FindAll<T>(DatabaseAutoQueryHelper.AutoSelectClause<T>());
 
         /// <summary>
         /// Select all the elements inside a table with a specify Sql query
@@ -711,12 +613,8 @@ namespace LothiumDB
         /// <typeparam name="T">Contains the type for the returned object</typeparam>
         /// <param name="sql">Contains the SQL object</param>
         /// <returns>A value based of the object type</returns>
-        public List<T> FetchAll<T>(SqlBuilder sql)
-        {
-            if (sql == null) return null;
-            if (String.IsNullOrEmpty(sql.Sql)) return null;
-            return Query<T>(sql);
-        }
+        public List<T> FindAll<T>(SqlBuilder sql)
+            => Query<T>(sql).ToList();
 
         /// <summary>
         /// Select all the elements inside a table with a specify Sql query
@@ -725,11 +623,11 @@ namespace LothiumDB
         /// <param name="sql">Contains the query command to be executed</param>
         /// <param name="args">Contains all the extra arguments of the query</param>
         /// <returns>A value based of the object type</returns>
-        public List<T> FetchAll<T>(string sql, params object[] args)
-            => FetchAll<T>(new SqlBuilder(sql, args));
+        public List<T> FindAll<T>(string sql, params object[] args)
+            => FindAll<T>(new SqlBuilder(sql, args));
 
         #endregion
-
+        
         #region FetchSingle Methods
 
         /// <summary>
@@ -737,12 +635,8 @@ namespace LothiumDB
         /// </summary>
         /// <param name="sql">Contains the SQL object</param>
         /// <returns>A value based of the object type</returns>
-        public T FetchSingle<T>(SqlBuilder sql)
-        {
-            if (sql == null) return default(T);
-            if (String.IsNullOrEmpty(sql.Sql)) return default(T);
-            return FetchAll<T>(sql).FirstElement();
-        }
+        public T FindSingle<T>(SqlBuilder sql)
+            => Query<T>(sql).ToList().FirstElement();
 
         /// <summary>
         /// Select a single specific element inside a table
@@ -752,11 +646,11 @@ namespace LothiumDB
         /// <param name="args">Contains all the extra arguments of the query</param>
         /// <returns>A value based of the object type</returns>
         /// <returns></returns>
-        public T FetchSingle<T>(string sql, params object[] args)
-            => FetchSingle<T>(new SqlBuilder(sql, args));
+        public T FindSingle<T>(string sql, params object[] args)
+            => FindSingle<T>(new SqlBuilder(sql, args));
 
         #endregion
-
+        
         #region FetchPage Methods
 
         /// <summary>
@@ -767,8 +661,7 @@ namespace LothiumDB
         /// <returns>A value based of the object type</returns>
         public List<T> FetchPage<T>(PageObject<T> page)
         {
-            var lothiumObj = new LothiumObject(typeof(T));
-            var sqlAutoSelect = AutoQueryGenerator.GenerateAutoSelectClauseFromPocoObject(new SqlBuilder("WHERE 1=1"), typeof(T));
+            var sqlAutoSelect = DatabaseAutoQueryHelper.AutoSelectClause<T>().Where("WHERE 1=1");
             return FetchPage<T>(page, sqlAutoSelect);
         }
 
@@ -780,7 +673,7 @@ namespace LothiumDB
         /// <param name="sql">Contains the SQL object</param>
         /// <returns>A value based of the object type</returns>
         public List<T> FetchPage<T>(PageObject<T> page, SqlBuilder sql)
-            => Query<T>(_dbProv.BuildPageQuery<T>(page, sql));
+            => Query<T>(_dbConnection.DatabaseProvider.BuildPageQuery<T>(page, sql)).ToList();
 
         /// <summary>
         /// Generate a Paging List from a PageObject
@@ -794,9 +687,39 @@ namespace LothiumDB
              => FetchPage<T>(page, new SqlBuilder(sql, args));
 
         #endregion
+        
+        #region Exist Methods
 
-        // Object Base Methods
+        /// <summary>
+        /// Search inside the database's if a record exist
+        /// </summary>
+        /// <param name="sql">Contains the SQL object</param>
+        /// <returns></returns>
+        public bool Exist(SqlBuilder sql)
+            => Convert.ToBoolean(Scalar<int>(sql));
 
+        /// <summary>
+        /// Search inside the database's if a record exist
+        /// </summary>
+        /// <param name="sql">Contains the query command to be executed</param>
+        /// <param name="args">Contains all the extra arguments of the query</param>
+        /// <returns></returns>
+        public bool Exist(string sql, params object[] args)
+            => Exist(new SqlBuilder(sql, args));
+
+        /// <summary>
+        /// Search inside the database's if a record exist
+        /// </summary>
+        /// <typeparam name="T">Contains the type for the returned object</typeparam>
+        /// <param name="obj">Contains the object with the db table's mapping</param>
+        /// <returns></returns>
+        public bool Exist<T>(object obj)
+         => Exist(DatabaseAutoQueryHelper.AutoExistClause<T>(new PocoObject<T>(obj)));
+
+        #endregion
+
+        // Object Base Methods //
+        
         #region Insert Methods
 
         /// <summary>
@@ -804,18 +727,14 @@ namespace LothiumDB
         /// </summary>
         /// <param name="obj">Contains the object with the db table's mapping</param>
         /// <returns>Return an object that contains the number of affected rows</returns>
-        public object Insert(object obj) => Execute(AutoQueryGenerator.GenerateInsertClauseFromPocoObject(_dbProv, obj));
-
-        /// <summary>
-        /// Insert the passed object inside a table of the database in the form of a row
-        /// </summary>
-        /// <param name="table">Contains the name of the table</param>
-        /// <param name="obj">Contains the object with the db table's mapping</param>
-        /// <returns>Return an object that contains the number of affected rows</returns>
-        public object Insert(string table, object obj) => Execute(AutoQueryGenerator.GenerateInsertClauseFromPocoObject(_dbProv, obj, table));
+        public object? Insert<T>(object obj)
+        {
+            if (obj == null) return null;
+            return Execute(DatabaseAutoQueryHelper.AutoInsertClause<T>(new PocoObject<T>(obj)));
+        }
 
         #endregion
-
+        
         #region Update Methods
 
         /// <summary>
@@ -823,18 +742,14 @@ namespace LothiumDB
         /// </summary>
         /// <param name="obj">Contains the object with the db table's mapping</param>
         /// <returns>Return an object that contains the number of affected rows</returns>
-        public object Update(object obj) => Execute(AutoQueryGenerator.GenerateUpdateClauseFromPocoObject(_dbProv, obj));
-
-        /// <summary>
-        /// Update a number of element inside a table of the database
-        /// </summary>
-        /// <param name="table">Contains the name of the table</param>
-        /// <param name="obj">Contains the object with the db table's mapping</param>
-        /// <returns>Return an object that contains the number of affected rows</returns>
-        public object Update(string table, object obj) => Execute(AutoQueryGenerator.GenerateUpdateClauseFromPocoObject(_dbProv, obj));
+        public object Update<T>(object obj)
+        {
+            if (obj == null) return null;
+            return Execute(DatabaseAutoQueryHelper.AutoUpdateClause(new PocoObject<T>(obj)));
+        }
 
         #endregion
-
+        
         #region Delete Methods
 
         /// <summary>
@@ -842,28 +757,26 @@ namespace LothiumDB
         /// </summary>
         /// <param name="obj">Contains the object with the db table's mapping</param>
         /// <returns>Return an object that contains the number of affected rows</returns>
-        public object Delete(object obj) => Execute(AutoQueryGenerator.GenerateDeleteClauseFromPocoObject(_dbProv, obj));
-
-        /// <summary>
-        /// Delete a number of element inside a table of the database
-        /// </summary>
-        /// <param name="table">Contains the name of the table</param>
-        /// <param name="obj">Contains the object with the db table's mapping</param>
-        /// <returns>Return an object that contains the number of affected rows</returns>
-        public object Delete(string table, object obj) => Execute(AutoQueryGenerator.GenerateDeleteClauseFromPocoObject(_dbProv, obj, table));
+        public object Delete<T>(object obj)
+        {
+            if (obj == null) return null;
+            return Execute(DatabaseAutoQueryHelper.AutoDeleteClause(new PocoObject<T>(obj)));
+        }
 
         #endregion
-    }
+        
+        #region Save Methods
 
-    /// <summary>
-    /// Extended Database Class
-    /// </summary>
-    /// <typeparam name="TDbProvider"></typeparam>
-    public class Database<TDbProvider> : Database where TDbProvider : IDbProvider
-    {
-        public Database(string connectionString = "") : base(DatabaseUtility.InizializeProviderByName(typeof(TDbProvider).Name), connectionString) { }
+        /// <summary>
+        /// If an object already exist inside the database will update it, otherwise will cretae it
+        /// </summary>
+        /// <typeparam name="T">Contains the type for the returned object</typeparam>
+        /// <param name="obj">Contains the object with the db table's mapping</param>
+        /// <returns>Return an object that contains the number of affected rows</returns>
+        public object Save<T>(object obj) 
+            => Exist<T>(obj) ? Update<T>(obj) : Insert<T>(obj);
 
-        public Database(params object[] args) : base(DatabaseUtility.InizializeProviderByName(typeof(TDbProvider).Name), args) { }
+        #endregion
     }
 }
 

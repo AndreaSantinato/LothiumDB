@@ -1,10 +1,11 @@
-﻿using System;
+﻿// System Class
+using System;
 using System.Globalization;
 using System.ComponentModel.DataAnnotations;
 
 namespace LothiumDB.Attributes
 {
-    [AttributeUsage(AttributeTargets.Class, AllowMultiple = true)]
+    [AttributeUsage(AttributeTargets.Property | AttributeTargets.Field, AllowMultiple = true)]
     sealed public class PrimaryKeyAttribute : ValidationAttribute
     {
         #region Property
