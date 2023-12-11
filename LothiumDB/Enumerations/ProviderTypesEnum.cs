@@ -9,10 +9,11 @@ namespace LothiumDB.Enumerations
     public enum ProviderTypesEnum
     {
         None = 0,
-        MSSql = 1,
+        MicrosoftSqlServer = 1,
         MySql = 2,
-        MariaDB = 3,
-        Oracle = 4,
-        Firebird = 5
+        MariaDb = 3,
+        PostgreSql = 4,
+        Oracle = 5,
+        Firebird = 6
     }
 }

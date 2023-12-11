@@ -1,17 +1,22 @@
 ﻿// Custom Class
 using LothiumDB.Core;
+using LothiumDB.Extensions;
 
 namespace LothiumDB.Core.Helpers
 {
     /// <summary>
-    /// Store all the static methods dedicated to automatic generate an sql clause from the C.R.U.D operations
+    ///     <para>
+    ///         Store all the static methods dedicated to automatic generate an sql clause from the C.R.U.D operations
+    ///     </para>
     /// </summary>
     /// <remarks>
-    /// - AutoSelectClause => Select * From [Table]
-    /// - AutoExistClause => If Exists (Select * From [Table])
-    /// - AutoInsertClause => Insert Into [Table]
-    /// - AutoUpdateClause => Update [Table]
-    /// - AutoDeleteClause => Delete From [Table]
+    ///     <para>
+    ///         - AutoSelectClause => Select * From [Table]
+    ///         - AutoExistClause => If Exists (Select * From [Table])
+    ///         - AutoInsertClause => Insert Into [Table]
+    ///         - AutoUpdateClause => Update [Table]
+    ///         - AutoDeleteClause => Delete From [Table]
+    ///     </para>
     /// </remarks>
     internal static class DatabaseAutoQueryHelper
     {
@@ -20,15 +25,19 @@ namespace LothiumDB.Core.Helpers
         /// </summary>
         /// <typeparam name="T">Contains the poco object's type to be mapped</typeparam>
         /// <returns>An SQLBuilder Object</returns>
-        public static SqlBuilder? AutoSelectClause<T>()
+        public static SqlBuilder AutoSelectClause<T>()
         {
+            var sql = new SqlBuilder();
             var poco = new PocoObject<T>();
-            if (poco.TableDataInfo == null) return null;
-            if (poco.ColumnDataInfo == null) return null;
+            
+            if (poco.TableDataInfo is null) return sql;
+            if (poco.ColumnDataInfo is null) return sql;
 
-            return new SqlBuilder()
-                .Select(string.Join(",", poco.ColumnDataInfo.Select(c => c.ColumnName)))
-                .From(poco.TableDataInfo.TableFullName);
+            return sql
+                .Select(
+                    poco.TableDataInfo.TableFullName,
+                    string.Join(",", poco.ColumnDataInfo.Select(c => c.ColumnName))
+                );
         }
 
         /// <summary>
@@ -37,29 +46,29 @@ namespace LothiumDB.Core.Helpers
         /// <typeparam name="T">Contains the poco object's type to be mapped</typeparam>
         /// <param name="poco">Contains the poco object to be maped</param>
         /// <returns></returns>
-        public static SqlBuilder? AutoExistClause<T>(PocoObject<T> poco)
+        public static SqlBuilder AutoExistClause<T>(PocoObject<T> poco)
         {
-            if (poco.TableDataInfo == null) return null;
-            if (poco.ColumnDataInfo == null) return null;
+            var sql = new SqlBuilder();
+            
+            if (poco.TableDataInfo == null) return sql;
+            if (poco.ColumnDataInfo == null) return sql;
 
             var searchedSql = new SqlBuilder()
-                .Select("*")
-                .From(poco.TableDataInfo.TableFullName);
+                .Select(poco.TableDataInfo.TableFullName);
 
             poco.ColumnDataInfo.ForEach(x =>
             {
-                if (x.PrimaryKeyInfo != null)
+                if (x.PrimaryKeyInfo == null) return;
+                
+                var pkName = x.ColumnName;
+                object? pkValue = null;
+
+                poco.ColumnDataInfo.ForEach(x =>
                 {
-                    string pkName = x.ColumnName;
-                    object? pkValue = null;
+                    if (x.ColumnName == pkName) pkValue = x.ColumnValue;
+                });
 
-                    poco.ColumnDataInfo.ForEach(x =>
-                    {
-                        if (x.ColumnName == pkName) pkValue = x.ColumnValue;
-                    });
-
-                    searchedSql.Where($"{pkName} = @0", pkValue);
-                }
+                searchedSql.Where($"{pkName} = @0", pkValue);
             });
 
             return new SqlBuilder(@$"
@@ -79,10 +88,12 @@ namespace LothiumDB.Core.Helpers
         /// </summary>
         /// <typeparam name="T">Contains the poco object's type to be mapped</typeparam>
         /// <returns>An SQLBuilder Object</returns>
-        public static SqlBuilder? AutoInsertClause<T>(PocoObject<T> poco)
+        public static SqlBuilder AutoInsertClause<T>(PocoObject<T> poco)
         {
-            if (poco.TableDataInfo == null) return null;
-            if (poco.ColumnDataInfo == null) return null;
+            var sql = new SqlBuilder();
+            
+            if (poco.TableDataInfo == null) return sql;
+            if (poco.ColumnDataInfo == null) return sql;
 
             var tbColNames = new List<string>();
             var tbColValues = new List<object>();
@@ -90,7 +101,7 @@ namespace LothiumDB.Core.Helpers
             poco.ColumnDataInfo
                 .Where(x => x.IsColumnExcluded == false).ToList()
                 .ForEach(x =>
-                {
+                { 
                     tbColNames.Add(x.ColumnName);
                     tbColValues.Add(x.ColumnValue);
                 }
@@ -105,10 +116,12 @@ namespace LothiumDB.Core.Helpers
         /// </summary>
         /// <typeparam name="T">Contains the poco object's type to be mapped</typeparam>
         /// <returns>An SQLBuilder Object</returns>
-        public static SqlBuilder? AutoUpdateClause<T>(PocoObject<T> poco)
+        public static SqlBuilder AutoUpdateClause<T>(PocoObject<T> poco)
         {
-            if (poco.TableDataInfo == null) return null;
-            if (poco.ColumnDataInfo == null) return null;
+            var sql = new SqlBuilder();
+            
+            if (poco.TableDataInfo == null) return sql;
+            if (poco.ColumnDataInfo == null) return sql;
 
             var setValues = new Dictionary<string, object>();
             poco.ColumnDataInfo
@@ -124,7 +137,7 @@ namespace LothiumDB.Core.Helpers
                 .ForEach(x => { whereValues.Add(x.ColumnName, x.ColumnValue); }
             );
 
-            return new SqlBuilder()
+            return sql
                 .UpdateTable(poco.TableDataInfo.TableFullName, setValues, whereValues);
         }
 
@@ -133,10 +146,12 @@ namespace LothiumDB.Core.Helpers
         /// </summary>
         /// <typeparam name="T">Contains the poco object's type to be mapped</typeparam>
         /// <returns>An SQLBuilder Object</returns>
-        public static SqlBuilder? AutoDeleteClause<T>(PocoObject<T> poco)
+        public static SqlBuilder AutoDeleteClause<T>(PocoObject<T> poco)
         {
-            if (poco.TableDataInfo == null) return null;
-            if (poco.ColumnDataInfo == null) return null;
+            var sql = new SqlBuilder();
+            
+            if (poco.TableDataInfo == null) return sql;
+            if (poco.ColumnDataInfo == null) return sql;
 
             var whereValues = new Dictionary<string, object>();
             poco.ColumnDataInfo
@@ -145,7 +160,7 @@ namespace LothiumDB.Core.Helpers
                 .ForEach(x => { whereValues.Add(x.ColumnName, x.ColumnValue); }
             );
 
-            return new SqlBuilder()
+            return sql
                 .DeleteTable(poco.TableDataInfo.TableFullName, whereValues);
         }
     }

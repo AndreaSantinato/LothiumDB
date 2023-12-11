@@ -1,17 +1,71 @@
 # LothiumDB [![NuGet Version](https://img.shields.io/nuget/v/LothiumDB.svg?style=flat)](https://www.nuget.org/packages/LothiumDB/) [![NuGet Downloads](https://img.shields.io/nuget/v/LothiumDB.svg?style=flat)](https://www.nuget.org/packages/LothiumDB/)
 
-LothiumDB is a simple micro ORM for .Net applications written entirely in C# for fun and offer a lot of different methods to find data in and out of a database. The library has a very simple syntax and give flexibility to the final user if he want to use a query written inside a string variable, or using the SqlBuilder class.
+LothiumDB is a simple micro ORM written completely in C# for fun and offer a lot of different methods to find data in and out of a database. The library has a very simple syntax and give flexibility to the final user if he want to use a query written inside a string variable, or using the SqlBuilder class.
+This library is written on the .Net 6 version and utilize some NuGet packages for database communication protocols.
+
+### Getting started
+
+LothiumDB is upload inside the microsoft's NuGet Store and you can get it inside your project using the NuGet Manager inside Visual Studio or with this command:
+
+```nuget
+dotnet add package LothiumDB
+```
+
+The library was designed to be easy and simple to use.
+The first step is to create a new class that will be your database context and extend the **`Database`** class.
+After this step you need to override the **`SetConfiguration`** and put your specific configuration inside it as shown below:
 
 ```csharp
-db.query<PocoType>("SELECT * FROM TABLE");
+// LothiumDB Classes
+using LothiumDB.Configurations;
+using LothiumDB.Data.Providers;
 
-var obj = new PocoObject()
+public class UserDatabase : Database
 {
-    Prop1 = "Prop1",
-    Prop2 = "Prop2";  
-};
-db.Insert<PocoType>(obj);
+    protected override void SetConfiguration(DatabaseContextConfiguration dbConfiguration)
+    {
+        // Choose the database provider and the value for the connection's string 
+        // The connection string generator accept an array of values ore the final formatted connection string
+        dbConfiguration.Provider = new MsSqlServerProvider();
+        dbConfiguration.ConnectionString = dbConfiguration
+            .Provider
+            .CreateConnectionString(
+                "localhost", // DB's Instance
+                "lt", // USer
+                "pswd", // Password
+                "TEST", // DB's Name
+                "Italian", // Language
+                false, // Encrypt
+                false // TrustServerCertificate
+            );
+        
+        // Choose to enable or disable the Audit sink
+        dbConfiguration.AuditMode = false;
+        dbConfiguration.AuditUser = "TestingUser";
+    }
+}
 ```
+
+After this step you are ready to go! Inside your classes you can use your name database context class simply by create a new instance of as shown below:
+
+```csharp
+var db = new UserDatabase();
+db.Query<Type>("SELECT * FROM TableName");
+```
+
+### Query Builder
+
+The library offers the built-in class to generate automatically a new query in the simple way possible.
+To utilize it you will need to instance of the SqlBuilder class and start using its methods as shown below:
+
+```csharp
+var sql = new SqlBuilder().
+    Select("*")
+    .From("TableName")
+    .Where("Prop = @0", 1);
+```
+
+### Database Table Attributes
 
 LothiumDB offers the ability to work with Poco Object to make operations inside the database.
 The library work well when a Poco Object have inside it all the needed attribute, in fact all the information about the associated table and column will be extracted automatically.
@@ -28,44 +82,6 @@ namespace TestModels
         [ColumnName("Prop1")] public string? Property1 { get; set; }
         [ColumnName("Prop2")] public string? Property2 { get; set; }
     }
-}
-```
-
-### Getting started
-
-You can install LothiumDB directly from NuGet using the NuGet Manager inside Visual Studio or with this command:
-
-```
-dotnet add package LothiumDB
-```
-
-The simplest way to set up LothiumDB is using the `Database` class and the `SqlBuilder` query constructor.
-
-```csharp
-using LothiumDB;
-
-public class Program
-{
-    // Instance the configuration object
-    var config = new DatabaseConfiguration();
-    // Set the provider settings
-    config.Provider
-        .AddProvider(providerName: "MSSqlServer")
-        .AddConnectionString(connectionString);
-    // Set the audit settings
-    config.Audit
-        .AddAudit()
-        .SetUser(auditUser: "DatabaseAdmin");
-    // Create the new db instance
-    var db = config.BuildDatabase(); 
-    
-    // Execute the first query
-    var sql = new SqlBuilder().Select("*").From("TableName"); 
-    List<PocoObject> list = db.FetchAll<PocoObject>(sql);
-    
-    // Execute the second query
-    var sql2 = new SqlBuilder().SelectTop(1, "*").From("TableName"); 
-    PocoObject pocoObj = db.FetchSingle<PocoObject>(sql);
 }
 ```
 
