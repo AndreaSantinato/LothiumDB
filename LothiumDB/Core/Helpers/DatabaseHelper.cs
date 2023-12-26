@@ -26,7 +26,7 @@ namespace LothiumDB.Core.Helpers
                 $@"(?<!{provider.VariablePrefix()}){provider.VariablePrefix()}\w+",
                 RegexOptions.Compiled
             );
-            return string.IsNullOrEmpty(sql.SqlQuery) ? null : regex.Matches(sql.SqlQuery);
+            return string.IsNullOrEmpty(sql.Query) ? null : regex.Matches(sql.Query);
         }
 
         /// <summary>
@@ -53,16 +53,20 @@ namespace LothiumDB.Core.Helpers
         /// <returns>The sql query's type</returns>
         public static SqlCommandTypeEnum DefineSqlCommandType(string sql)
         {
+            SqlCommandTypeEnum type;
+            
             if (sql.ToUpper().StartsWith("SELECT")) 
-                return SqlCommandTypeEnum.Select;
+                type = SqlCommandTypeEnum.Select;
             else if (sql.ToUpper().StartsWith("UPDATE")) 
-                return SqlCommandTypeEnum.Update;
+                type = SqlCommandTypeEnum.Update;
             else if (sql.ToUpper().StartsWith("DELETE"))
-                return SqlCommandTypeEnum.Delete;
+                type = SqlCommandTypeEnum.Delete;
             else if (sql.ToUpper().StartsWith("INSERT"))
-                return SqlCommandTypeEnum.Insert;
+                type = SqlCommandTypeEnum.Insert;
             else 
-                return SqlCommandTypeEnum.None;
+                type = SqlCommandTypeEnum.None;
+
+            return type;
         }
 
         /// <summary>
@@ -79,11 +83,11 @@ namespace LothiumDB.Core.Helpers
                 ArgumentNullException.ThrowIfNull(provider);
                 ArgumentNullException.ThrowIfNull(sql);
 
-                if (string.IsNullOrEmpty(sql.SqlQuery))
-                    throw new ArgumentNullException(nameof(sql.SqlQuery));
+                if (string.IsNullOrEmpty(sql.Query))
+                    throw new ArgumentNullException(nameof(sql.Query));
                 
                 // If there aren't any parameters, format the full sql with a generic message
-                if (!sql.SqlParams.Any()) return $"{sql}\n\n/// No Params ///";    
+                if (!sql.Params.Any()) return $"{sql}\n\n/// No Params ///";    
                 
                 // Check if inside the query there are parameters
                 var queryParams = DatabaseHelper.ExtractParametersVariableFromQuery(provider, sql);
@@ -95,7 +99,7 @@ namespace LothiumDB.Core.Helpers
                 queryParams?.ToList().ForEach(par =>
                 {
                     var parName = par.ToString();
-                    var parValue = sql.SqlParams[parIndex];
+                    var parValue = sql.Params[parIndex];
                     formattedParameters += $"\n{parIndex}) {parName} = {parValue}";
                     parIndex++;
                 });
@@ -133,7 +137,7 @@ namespace LothiumDB.Core.Helpers
                     if (variable is null) continue;
 
                     var key = variable.ToString();
-                    var value = sql.SqlParams.ElementAt(index);
+                    var value = sql.Params.ElementAt(index);
 
                     if (key != null) paramsList.Add(key, value);
                     index++;

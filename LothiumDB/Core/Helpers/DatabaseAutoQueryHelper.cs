@@ -72,7 +72,7 @@ namespace LothiumDB.Core.Helpers
             });
 
             return new SqlBuilder(@$"
-                IF EXISTS ({searchedSql.SqlQuery})
+                IF EXISTS ({searchedSql.Query})
                 BEGIN
                     SELECT 1
                 END
@@ -80,7 +80,7 @@ namespace LothiumDB.Core.Helpers
                 BEGIN
                     SELECT 0
                 END
-            ", searchedSql.SqlParams);
+            ", searchedSql.Params);
         }
 
         /// <summary>

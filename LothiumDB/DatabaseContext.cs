@@ -300,8 +300,8 @@ public class DatabaseContext : IDatabase, IDisposable
         ArgumentNullException.ThrowIfNull(sql);
         
         // Check if the query is empty
-        if (string.IsNullOrEmpty(sql.SqlQuery)) 
-            throw new ArgumentException(nameof(sql.SqlQuery));
+        if (string.IsNullOrEmpty(sql.Query)) 
+            throw new ArgumentException(nameof(sql.Query));
 
         // Create the new command
         IDbCommand? command = null;
@@ -314,10 +314,10 @@ public class DatabaseContext : IDatabase, IDisposable
             ArgumentNullException.ThrowIfNull(command);
 
             command.Transaction = _dbTransaction?.Transaction;
-            command.CommandText = sql.SqlQuery;
+            command.CommandText = sql.Query;
             command.CommandType = commandType;
 
-            if (sql.SqlParams.Any())
+            if (sql.Params.Any())
             {
                 switch (commandType)
                 {
@@ -387,9 +387,9 @@ public class DatabaseContext : IDatabase, IDisposable
         T? result = default;
 
         // If the query is empty it will return a default value
-        if (string.IsNullOrEmpty(sql.SqlQuery)) return result!;
+        if (string.IsNullOrEmpty(sql.Query)) return result!;
         
-        LastExecutedSql = DatabaseHelper.FormatSqlCommandQuery(Provider!, sql);
+        LastExecutedSql = sql.ToFormatQuery();
 
         // Execute the query
         try
@@ -446,9 +446,9 @@ public class DatabaseContext : IDatabase, IDisposable
         var affectedRowOnCommand = 0;
 
         // If the query is empty it will return a default value
-        if (string.IsNullOrEmpty(sql.SqlQuery)) return affectedRowOnCommand;
+        if (string.IsNullOrEmpty(sql.Query)) return affectedRowOnCommand;
         
-        LastExecutedSql = DatabaseHelper.FormatSqlCommandQuery(Provider!, sql);
+        LastExecutedSql = sql.ToFormatQuery();
 
         // Execute the query
         try
@@ -507,9 +507,9 @@ public class DatabaseContext : IDatabase, IDisposable
         var list = new List<T>();
 
         // If the query is empty it will return an empty list of the passed type
-        if (string.IsNullOrEmpty(sql.SqlQuery)) return Enumerable.Empty<T>();
+        if (string.IsNullOrEmpty(sql.Query)) return Enumerable.Empty<T>();
         
-        LastExecutedSql = DatabaseHelper.FormatSqlCommandQuery(Provider!, sql);
+        LastExecutedSql = sql.ToFormatQuery();
 
         // Execute the query
         try
@@ -723,7 +723,7 @@ public class DatabaseContext : IDatabase, IDisposable
     {
         if (_configuration.Provider is null) return (List<T>)Enumerable.Empty<T>();
         var pageSql = _configuration.Provider.BuildPageQuery<T>(page, sql);
-        return (List<T>)(string.IsNullOrEmpty(pageSql.SqlQuery) ? Enumerable.Empty<T>() : Query<T>(pageSql).ToList());
+        return (List<T>)(string.IsNullOrEmpty(pageSql.Query) ? Enumerable.Empty<T>() : Query<T>(pageSql).ToList());
     }
 
     /// <summary>

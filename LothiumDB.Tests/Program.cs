@@ -9,11 +9,14 @@ Console.WriteLine("Start Testing Console Project");
 
 // Generate a new db configuration and build it //
 var db = new TestDatabaseContext();
+var sql = new SqlBuilder();
 
 // Execute test examples //
 
 // Remove all the element inside the table
-db.Execute(new SqlBuilder().DeleteTable("TabellaDiTest"));
+sql.Clear();
+sql.DeleteTable("TabellaDiTest");
+db.Execute(sql);
 
 // Populate the table with six new elements
 db.Insert<TabellaDiTest>(
@@ -28,12 +31,15 @@ db.Insert<TabellaDiTest>(
     }
 );
 
-// Retrieve an IEnumerable result
-var res1 = db.Query<TabellaDiTest>(new SqlBuilder().Select("TabellaDiTest"));
-var res2 = db.FindAll<TabellaDiTest>(new SqlBuilder().Select("TabellaDiTest"));
+// Retrieve the elements in the form of an IEnumerable collections
+sql.Clear();
+sql.Select().From("TabellaDiTest");
+var res1 = db.Query<TabellaDiTest>(sql);
+var res2 = db.FindAll<TabellaDiTest>(sql);
 
-// Retrieve an IList result
-var res3 = db.FindSingle<TabellaDiTest>(new SqlBuilder().Select("TabellaDiTest").Where("Nome = @0", "Prop4"));
+// Retrieve the elements in the form of a list
+sql.Where("Nome = @0", "Prop4");
+var res3 = db.FindSingle<TabellaDiTest>(sql);
 
 // Insert/Update/Delete
 try
