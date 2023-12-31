@@ -14,14 +14,14 @@ namespace LothiumDB.Data.Providers;
 /// </summary>
 public sealed class MariaDbProvider : IDatabaseProvider
 {
-    public ProviderTypesEnum ProviderType() => ProviderTypesEnum.MariaDb;
+    public ProviderTypesEnum DbProviderType { get; } = ProviderTypesEnum.MariaDb;
+    public string DbConnectionString { get; private set;  } = string.Empty;
+    public string DbVariablePrefix { get; private set;  } = "@";
 
-    public string VariablePrefix() => "@";
-
-    public string CreateConnectionString(params object[] args)
+    public void CreateConnectionString(params object[] args)
     {
-        if (!args.Any()) return string.Empty;
-        return new MySqlConnectionStringBuilder()
+        if (!args.Any()) return;
+        DbConnectionString = new MySqlConnectionStringBuilder()
         {
             DefaultCommandTimeout = 30,
             Server = (string)args[0],

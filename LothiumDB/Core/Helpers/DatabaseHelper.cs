@@ -23,7 +23,7 @@ namespace LothiumDB.Core.Helpers
         private static MatchCollection? ExtractParametersVariableFromQuery(IDatabaseProvider provider, SqlBuilder sql)
         {
             var regex = new Regex(
-                $@"(?<!{provider.VariablePrefix()}){provider.VariablePrefix()}\w+",
+                $@"(?<!{provider.DbVariablePrefix}){provider.DbVariablePrefix}\w+",
                 RegexOptions.Compiled
             );
             return string.IsNullOrEmpty(sql.Query) ? null : regex.Matches(sql.Query);
@@ -212,11 +212,11 @@ namespace LothiumDB.Core.Helpers
             }
             
             // If the query contains a double variable prefix it will be formatted to be a normal sql variable
-            if (command.CommandText.Contains($"{provider.VariablePrefix()}{provider.VariablePrefix()}"))
+            if (command.CommandText.Contains($"{provider.DbVariablePrefix}{provider.DbVariablePrefix}"))
             {
                 command.CommandText = command.CommandText.Replace(
-                    $"{provider.VariablePrefix()}{provider.VariablePrefix()}", 
-                    provider.VariablePrefix()
+                    $"{provider.DbVariablePrefix}{provider.DbVariablePrefix}", 
+                    provider.DbVariablePrefix
                 );
             }
         }

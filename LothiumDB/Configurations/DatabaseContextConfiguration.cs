@@ -10,11 +10,6 @@ public class DatabaseContextConfiguration
     public IDatabaseProvider? Provider { get; set; }
     
     /// <summary>
-    /// Contains the connection string to a database instance
-    /// </summary>
-    public string? ConnectionString { get; set; }
-    
-    /// <summary>
     /// Indicates the timeout for the execution of all the query
     /// </summary>
     public int QueryTimeOut { get; set; }

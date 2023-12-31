@@ -15,15 +15,14 @@ namespace LothiumDB.Data.Providers;
 /// </summary>
 public sealed class PostgreSqlProvider : IDatabaseProvider
 {
-    public ProviderTypesEnum ProviderType() => ProviderTypesEnum.PostgreSql;
-
-    public string VariablePrefix() => "@";
-
-    public string CreateConnectionString(params object[] args)
+    public ProviderTypesEnum DbProviderType { get; } = ProviderTypesEnum.PostgreSql;
+    public string DbConnectionString { get; private set;  } = string.Empty;
+    public string DbVariablePrefix { get; private set;  } = "@";
+    
+    public void CreateConnectionString(params object[] args)
     {
-        if (!args.Any()) return string.Empty;
-        
-        return new NpgsqlConnectionStringBuilder()
+        if (!args.Any()) return;
+        DbConnectionString = new NpgsqlConnectionStringBuilder()
         {
             Timeout = 30,
             Host = (string)args[0],

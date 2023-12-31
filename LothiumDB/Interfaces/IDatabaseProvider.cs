@@ -12,23 +12,26 @@ namespace LothiumDB.Interfaces;
 public interface IDatabaseProvider
 {
     /// <summary>
-    /// Return the Variable Character for the specific Database Connection provider's type
+    /// Contains the chosen provider's type
     /// </summary>
-    /// <returns>Return a string</returns>
-    abstract string VariablePrefix();
-
+    ProviderTypesEnum DbProviderType { get;  }
+    
     /// <summary>
-    /// Return the Provider's Type
+    /// Contains the actual connection string to perform operation into the database's instance
     /// </summary>
-    /// <returns>Return a ProviderTypes Enum Value</returns>
-    abstract ProviderTypesEnum ProviderType();
+    string DbVariablePrefix { get; }
+    
+    /// <summary>
+    /// Contains the specific parameter's variable prefix
+    /// </summary>
+    string DbConnectionString { get; }
     
     /// <summary>
     /// Create a new Specific Connection String for the specific Database Connection provider's type
     /// </summary>
     /// <param name="args"></param>
     /// <returns>The final formatted database connection string</returns>
-    abstract string CreateConnectionString(params object[] args);
+    abstract void CreateConnectionString(params object[] args);
 
     /// <summary>
     /// Create a new Specific Connection from a database's connection string

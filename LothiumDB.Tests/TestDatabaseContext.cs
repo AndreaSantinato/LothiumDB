@@ -10,7 +10,7 @@ public class TestDatabaseContext : DatabaseContext
     protected override void SetConfiguration(DatabaseContextConfiguration dbConfiguration)
     {
         dbConfiguration.Provider = new MsSqlServerProvider();
-        dbConfiguration.ConnectionString = dbConfiguration
+        dbConfiguration
             .Provider
             .CreateConnectionString(
                 "192.168.1.124", 

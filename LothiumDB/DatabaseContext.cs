@@ -141,11 +141,11 @@ public class DatabaseContext : IDatabase, IDisposable
         ArgumentNullException.ThrowIfNull(_configuration);
         ArgumentNullException.ThrowIfNull(_configuration.Provider);
         
-        if (string.IsNullOrEmpty(_configuration.ConnectionString))
-            throw new ArgumentNullException(nameof(_configuration.ConnectionString));
+        if (string.IsNullOrEmpty(_configuration.Provider.DbConnectionString))
+            throw new ArgumentNullException(nameof(_configuration.Provider.DbConnectionString));
 
-        _dbConnection = _configuration.Provider.CreateConnection(_configuration.ConnectionString);
-        _dbConnection.ConnectionString = _configuration.ConnectionString;
+        _dbConnection = _configuration.Provider.CreateConnection(_configuration.Provider.DbConnectionString);
+        _dbConnection.ConnectionString = _configuration.Provider.DbConnectionString;
         _dbTransaction = null;
         
         LastGeneratedError = null;
@@ -219,8 +219,8 @@ public class DatabaseContext : IDatabase, IDisposable
             ArgumentNullException.ThrowIfNull(_configuration);
             ArgumentNullException.ThrowIfNull(_configuration.Provider);
             
-            if (string.IsNullOrEmpty(_configuration.ConnectionString))
-                throw new ArgumentNullException(nameof(_configuration.ConnectionString));
+            if (string.IsNullOrEmpty(_configuration.Provider.DbConnectionString))
+                throw new ArgumentNullException(nameof(_configuration.Provider.DbConnectionString));
 
             _dbTransaction = new DatabaseTransactionObject(_dbConnection);
             _dbTransaction.BeginDatabaseTransaction();

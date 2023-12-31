@@ -13,15 +13,14 @@ namespace LothiumDB.Data.Providers;
 /// </summary>
 public sealed class MsSqlServerProvider : IDatabaseProvider
 {
-    public ProviderTypesEnum ProviderType() => ProviderTypesEnum.MicrosoftSqlServer;
+    public ProviderTypesEnum DbProviderType { get; } = ProviderTypesEnum.MicrosoftSqlServer;
+    public string DbConnectionString { get; private set;  } = string.Empty;
+    public string DbVariablePrefix { get; private set;  } = "@";
 
-    public string VariablePrefix() => "@";
-
-    public string CreateConnectionString(params object[] args)
+    public void CreateConnectionString(params object[] args)
     {
-        if (!args.Any()) return string.Empty;
-        
-        return new SqlConnectionStringBuilder()
+        if (!args.Any()) return;
+        DbConnectionString = new SqlConnectionStringBuilder()
         {
             ConnectRetryCount = 2,
             ConnectTimeout = 30,
