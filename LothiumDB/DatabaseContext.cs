@@ -136,18 +136,19 @@ public class DatabaseContext : IDatabase, IDisposable
     /// <exception cref="ArgumentNullException">Will be generated if one of the configuration's property is not correct</exception>
     private void LoadDatabaseContext()
     {
+        // Set the configuration object
         SetConfiguration(_configuration);
-
-        ArgumentNullException.ThrowIfNull(_configuration);
-        ArgumentNullException.ThrowIfNull(_configuration.Provider);
         
-        if (string.IsNullOrEmpty(_configuration.Provider.DbConnectionString))
-            throw new ArgumentNullException(nameof(_configuration.Provider.DbConnectionString));
+        // Validate the current loaded configuration
+        DatabaseExceptionHelper.ValidateDatabaseContextConfiguration(_configuration);
 
-        _dbConnection = _configuration.Provider.CreateConnection(_configuration.Provider.DbConnectionString);
-        _dbConnection.ConnectionString = _configuration.Provider.DbConnectionString;
+        // Set the connection with the configuration's values
+        var connString = _configuration.Provider!.DbConnectionString;
+        _dbConnection = _configuration.Provider!.CreateConnection(connString);
+        _dbConnection.ConnectionString = connString;
         _dbTransaction = null;
         
+        // Set the history property to their default values
         LastGeneratedError = null;
         LastExecutedSql = string.Empty;
         LastExecuteCommandType = string.Empty;
@@ -163,10 +164,13 @@ public class DatabaseContext : IDatabase, IDisposable
     {
         try
         {
+            // If there is already an open transaction it will do nothing
             if (_dbTransaction is not null) return;
             
-            ArgumentNullException.ThrowIfNull(_dbConnection);
+            // Validate the current connection object
+            DatabaseExceptionHelper.ValidateDatabaseContextConnection(_dbConnection);
             
+            // Open a new connection
             _dbConnection.Open();
         }
         catch (Exception ex)
@@ -192,6 +196,7 @@ public class DatabaseContext : IDatabase, IDisposable
             if (_dbTransaction is not null) return;
             if (_dbConnection is null) return;
 
+            // Close a previously opened connection
             _dbConnection.Close();
         }
         catch (Exception ex)
@@ -215,13 +220,11 @@ public class DatabaseContext : IDatabase, IDisposable
     {
         try
         {
-            ArgumentNullException.ThrowIfNull(_dbConnection);
-            ArgumentNullException.ThrowIfNull(_configuration);
-            ArgumentNullException.ThrowIfNull(_configuration.Provider);
-            
-            if (string.IsNullOrEmpty(_configuration.Provider.DbConnectionString))
-                throw new ArgumentNullException(nameof(_configuration.Provider.DbConnectionString));
+            // Check if the connection and the configuration object is valid
+            DatabaseExceptionHelper.ValidateDatabaseContextConnection(_dbConnection);
+            DatabaseExceptionHelper.ValidateDatabaseContextConfiguration(_configuration);
 
+            // Create a new transaction and start it
             _dbTransaction = new DatabaseTransactionObject(_dbConnection);
             _dbTransaction.BeginDatabaseTransaction();
         }
