@@ -2,7 +2,6 @@
 using System.Data;
 using System.Text.RegularExpressions;
 // Custom Class
-using LothiumDB.Enumerations;
 using LothiumDB.Extensions;
 using LothiumDB.Interfaces;
 
@@ -28,90 +27,6 @@ internal static class DatabaseHelper
             RegexOptions.Compiled
         );
         return string.IsNullOrEmpty(sql.Query) ? null : regex.Matches(sql.Query);
-    }
-
-    /// <summary>
-    /// Define what is the current database command's type
-    /// </summary>
-    /// <param name="cmd">Contains the database command</param>
-    /// <returns>The database command's type</returns>
-    /// <exception cref="ArgumentOutOfRangeException"></exception>
-    public static DBCommandTypeEnum DefineDatabaseCommandType(string cmd)
-    {
-        return cmd.ToUpper() switch
-        {
-            "TEXT" => DBCommandTypeEnum.Text,
-            "TABLEDIRECTR" => DBCommandTypeEnum.TableDirect,
-            "STOREDPROCEDURES" => DBCommandTypeEnum.StoredProcedure,
-            _ => DBCommandTypeEnum.None
-        };
-    }
-
-    /// <summary>
-    /// Define what is the current sql query's type
-    /// </summary>
-    /// <param name="sql">Contains the sql query</param>
-    /// <returns>The sql query's type</returns>
-    public static SqlCommandTypeEnum DefineSqlCommandType(string sql)
-    {
-        SqlCommandTypeEnum type;
-
-        if (sql.ToUpper().StartsWith("SELECT"))
-            type = SqlCommandTypeEnum.Select;
-        else if (sql.ToUpper().StartsWith("UPDATE"))
-            type = SqlCommandTypeEnum.Update;
-        else if (sql.ToUpper().StartsWith("DELETE"))
-            type = SqlCommandTypeEnum.Delete;
-        else if (sql.ToUpper().StartsWith("INSERT"))
-            type = SqlCommandTypeEnum.Insert;
-        else
-            type = SqlCommandTypeEnum.None;
-
-        return type;
-    }
-
-    /// <summary>
-    /// Create a formatted Sql Command with all the parameters and their values
-    /// </summary>
-    /// <param name="provider">Contains the chosen database provider</param>
-    /// <param name="sql">Contains the sql builder object</param>
-    /// <returns></returns>
-    public static string FormatSqlCommandQuery(IProvider provider, SqlBuilder sql)
-    {
-        try
-        {
-            // Check if the minimum values are valid
-            ArgumentNullException.ThrowIfNull(provider);
-            ArgumentNullException.ThrowIfNull(sql);
-
-            if (string.IsNullOrEmpty(sql.Query))
-                throw new ArgumentNullException(nameof(sql.Query));
-
-            // If there aren't any parameters, format the full sql with a generic message
-            if (!sql.Params.Any()) return $"{sql}\n\n/// No Params ///";
-
-            // Check if inside the query there are parameters
-            var queryParams = DatabaseHelper.ExtractParametersVariableFromQuery(provider, sql);
-            if (queryParams != null && !queryParams.Any()) return $"{sql}\n\n/// No Params ///";
-
-            // Format the parameters for the output result
-            var formattedParameters = string.Empty;
-            var parIndex = 0;
-            queryParams?.ToList().ForEach(par =>
-            {
-                var parName = par.ToString();
-                var parValue = sql.Params[parIndex];
-                formattedParameters += $"\n{parIndex}) {parName} = {parValue}";
-                parIndex++;
-            });
-
-            // Return the final formatted result
-            return $"{sql}\n\n/// Query Params ///\n{formattedParameters}";
-        }
-        catch (Exception ex)
-        {
-            return string.Empty;
-        }
     }
 
     /// <summary>
