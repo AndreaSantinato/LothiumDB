@@ -21,10 +21,10 @@ internal static class DatabaseHelper
     /// <param name="provider">Contains the chosen database provider</param>
     /// <param name="sql">Contains the actual sql query</param>
     /// <returns></returns>
-    private static MatchCollection? ExtractParametersVariableFromQuery(IDatabaseProvider provider, SqlBuilder sql)
+    private static MatchCollection? ExtractParametersVariableFromQuery(IProvider provider, SqlBuilder sql)
     {
         var regex = new Regex(
-            $@"(?<!{provider.DbVariablePrefix}){provider.DbVariablePrefix}\w+",
+            $@"(?<!{provider.GetVariablePrefix()}){provider.GetVariablePrefix()}\w+",
             RegexOptions.Compiled
         );
         return string.IsNullOrEmpty(sql.Query) ? null : regex.Matches(sql.Query);
@@ -76,7 +76,7 @@ internal static class DatabaseHelper
     /// <param name="provider">Contains the chosen database provider</param>
     /// <param name="sql">Contains the sql builder object</param>
     /// <returns></returns>
-    public static string FormatSqlCommandQuery(IDatabaseProvider provider, SqlBuilder sql)
+    public static string FormatSqlCommandQuery(IProvider provider, SqlBuilder sql)
     {
         try
         {
@@ -121,7 +121,7 @@ internal static class DatabaseHelper
     /// <param name="provider">Contains the loaded database provider</param>
     /// <param name="command">Contains the database command to add the parameters</param>
     /// <param name="sql">Contains the sql query</param>
-    public static void AddParamsToDatabaseCommand(IDatabaseProvider provider, ref IDbCommand command, SqlBuilder sql)
+    public static void AddParamsToDatabaseCommand(IProvider provider, ref IDbCommand command, SqlBuilder sql)
     {
         var paramsList = new Dictionary<string, object>();
 
@@ -214,11 +214,11 @@ internal static class DatabaseHelper
         }
 
         // If the query contains a double variable prefix it will be formatted to be a normal sql variable
-        if (command.CommandText.Contains($"{provider.DbVariablePrefix}{provider.DbVariablePrefix}"))
+        if (command.CommandText.Contains($"{provider.GetVariablePrefix()}{provider.GetVariablePrefix()}"))
         {
             command.CommandText = command.CommandText.Replace(
-                $"{provider.DbVariablePrefix}{provider.DbVariablePrefix}",
-                provider.DbVariablePrefix
+                $"{provider.GetVariablePrefix()}{provider.GetVariablePrefix()}",
+                provider.GetVariablePrefix()
             );
         }
     }

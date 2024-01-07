@@ -1,72 +1,44 @@
-﻿// System Class
-using System.Data;
-// Custom Class
+﻿// Custom Class
 using LothiumDB.Enumerations;
-using LothiumDB.Extensions;
-using LothiumDB.Interfaces;
-// NuGet Packages
-using MySql.Data.MySqlClient;
 
 namespace LothiumDB.Data.Providers;
 
 /// <summary>
 /// Defines A Provider For A MariaDB's Database Instance
 /// </summary>
-public sealed class MariaDbProvider : IDatabaseProvider
+public class MariaDbProvider : MySqlProvider
 {
-    public ProviderTypesEnum DbProviderType { get; } = ProviderTypesEnum.MariaDb;
-    public string DbConnectionString { get; private set;  } = string.Empty;
-    public string DbVariablePrefix { get; private set;  } = "@";
-
-    public void CreateConnectionString(params object[] args)
+    /// <summary>
+    /// Create a new instance of the MariaDB database provider
+    /// </summary>
+    /// <param name="connectionString">Contains the specific connection string</param>
+    public MariaDbProvider(string connectionString) : base(connectionString)
     {
-        if (!args.Any()) return;
-        DbConnectionString = new MySqlConnectionStringBuilder()
-        {
-            DefaultCommandTimeout = 30,
-            Server = (string)args[0],
-            UserID = (string)args[1],
-            Password = (string)args[2],
-            Database = (string)args[3],
-            SqlServerMode = (bool)args[4]
-        }.ConnectionString;
+        base.Type = ProviderTypesEnum.MariaDb;
     }
 
-    public IDbConnection CreateConnection(string connectionString)
+    /// <summary>
+    /// Create a new instance of the MariaDB database provider
+    /// </summary>
+    /// <param name="server">Contains the server instance</param>
+    /// <param name="userId">Contains the user</param>
+    /// <param name="password">Contains the password</param>
+    /// <param name="database">Contains the database's name</param>
+    /// <param name="sqlServerMode">Indicates if the connection must use the sql mode</param>
+    public MariaDbProvider(
+        string server, 
+        string userId,
+        string password,
+        string database, 
+        bool sqlServerMode
+    ) : base(
+        server,
+        userId, 
+        password,
+        database, 
+        sqlServerMode
+    )
     {
-        ArgumentNullException.ThrowIfNull(connectionString);
-        return new MySqlConnection(connectionString);
-    }
-
-    public SqlBuilder BuildPageQuery<T>(PageObject<T> pageObj, SqlBuilder sql)
-    {
-        sql.Append($"LIMIT {pageObj.ItemsForEachPage}").Append($"OFFSET {pageObj.ItemsToBeSkipped}");
-        return sql;
-    }
-
-    public SqlBuilder CreateAuditTable()
-    {
-        return new SqlBuilder(@"
-            /* Create the table */
-
-            CREATE TABLE AuditEvents
-            (
-	            AuditID int NOT NULL,
-                AuditLevel nvarchar(32) NOT NULL,
-	            AuditUser nvarchar(64) NOT NULL,
-	            ExecutedOn date NOT NULL,
-	            DbCommandType nvarchar(32) NOT NULL,
-	            SqlCommandType nvarchar(32) NOT NULL,
-	            SqlCommandOnly nvarchar(255),
-	            SqlCommandComplete nvarchar(255),
-                ErrorMessage nvarchar(255)
-            );
-
-            /* Add the primary key */
-            ALTER TABLE AuditEvents ADD PRIMARY KEY(AuditID);
-
-            /* Set the primary key auto-increment */
-            ALTER TABLE AuditEvents MODIFY COLUMN AuditID INT AUTO_INCREMENT;
-        ");
+        base.Type = ProviderTypesEnum.MariaDb;
     }
 }

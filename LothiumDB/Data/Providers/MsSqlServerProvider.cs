@@ -1,82 +1,136 @@
-﻿// System Class
+﻿// System Classes
 using System.Data;
 using System.Data.SqlClient;
-// Custom Class
+// Custom Classes
 using LothiumDB.Enumerations;
 using LothiumDB.Extensions;
 using LothiumDB.Interfaces;
 
+// Providers Namespace
 namespace LothiumDB.Data.Providers;
 
 /// <summary>
 /// Defines A Provider For A Microsoft SQL Server's Database Instance
 /// </summary>
-public sealed class MsSqlServerProvider : IDatabaseProvider
+public class MsSqlServerProvider : BaseProvider, IProvider
 {
-    public ProviderTypesEnum DbProviderType { get; } = ProviderTypesEnum.MicrosoftSqlServer;
-    public string DbConnectionString { get; private set;  } = string.Empty;
-    public string DbVariablePrefix { get; private set;  } = "@";
+    /// <summary>
+    /// Create a new instance of the MsSqlServer database provider
+    /// </summary>
+    /// <param name="connectionString">Contains the specific connection string</param>
+    public MsSqlServerProvider(string connectionString) : base(ProviderTypesEnum.MicrosoftSqlServer, connectionString, "@") { }
 
-    public void CreateConnectionString(params object[] args)
-    {
-        if (!args.Any()) return;
-        DbConnectionString = new SqlConnectionStringBuilder()
+    /// <summary>
+    /// Create a new instance of the MsSqlServer database provider
+    /// </summary>
+    /// <param name="dataSource">Contains the data source</param>
+    /// <param name="userId">Contains the user</param>
+    /// <param name="password">Contains the password</param>
+    /// <param name="initialCatalog">Contains the database's name</param>
+    /// <param name="currentLanguage">Contains the chosen language</param>
+    /// <param name="encrypt">Indicates if the connection must by encrypted</param>
+    /// <param name="trustServerCertificate">Indicates if the database instance need a trusted certificate</param>
+    public MsSqlServerProvider(
+        string dataSource,
+        string userId,
+        string password,
+        string initialCatalog,
+        string currentLanguage,
+        bool encrypt,
+        bool trustServerCertificate
+    ) : this(
+        new SqlConnectionStringBuilder()
         {
             ConnectRetryCount = 2,
             ConnectTimeout = 30,
-            DataSource = (string)args[0],
-            UserID = (string)args[1],
-            Password = (string)args[2],
-            InitialCatalog = (string)args[3],
-            CurrentLanguage = (string)args[4],
-            Encrypt = (bool)args[5],
-            TrustServerCertificate = (bool)args[6]
-        }.ConnectionString;
-    }
+            DataSource = dataSource,
+            UserID = userId,
+            Password = password,
+            InitialCatalog = initialCatalog,
+            CurrentLanguage = currentLanguage,
+            Encrypt = encrypt,
+            TrustServerCertificate = trustServerCertificate
+        }.ConnectionString
+    ) { }
 
-    public IDbConnection CreateConnection(string connectionString)
+    /// <summary>
+    /// Get the provider's type
+    /// </summary>
+    /// <returns>Current Provider's Type Enum</returns>
+    public ProviderTypesEnum GetProviderType() => base.Type;
+
+    /// <summary>
+    /// Get the provider's connection string
+    /// </summary>
+    /// <returns>A Formatted Connection String</returns>
+    public string? GetConnectionString() => base.ConnectionString;
+
+    /// <summary>
+    /// Get the provider parameter's variable prefix
+    /// </summary>
+    /// <returns>A Specific Variable's Prefix For Database Parameters</returns>
+    public string? GetVariablePrefix() => base.VariablePrefix;
+
+    /// <summary>
+    /// Create a new connection based on specified connection string
+    /// </summary>
+    /// <returns>A Formatted connection string for the MsSqlServer provider</returns>
+    /// <exception cref="ArgumentNullException">Generate an exception if the connection string is null or empty</exception>
+    public IDbConnection CreateConnection()
     {
-        ArgumentNullException.ThrowIfNull(connectionString);
-        return new SqlConnection(connectionString);
+        // Check if the passed or generated connection string is null or empty
+        // before create a new database's connection
+        ArgumentNullException.ThrowIfNull(base.ConnectionString);
+        
+        // Create the new database connection and set the connection string
+        var conn = new SqlConnection(base.ConnectionString);
+        conn.ConnectionString = base.ConnectionString;
+        
+        // Return the final generated connection
+        return conn;
     }
 
+    /// <summary>
+    /// Create a query for retrieve data in a paginated result
+    /// </summary>
+    /// <typeparam name="T">Indicates the type of the database's table</typeparam>
+    /// <param name="pageObj">Contains the pagination object</param>
+    /// <param name="sql">Contains the actual query</param>
+    /// <returns></returns>
     public SqlBuilder BuildPageQuery<T>(PageObject<T> pageObj, SqlBuilder sql)
     {
-        sql.Append($"OFFSET {pageObj.ItemsForEachPage} ROWS")
-            .Append($"FETCH NEXT {pageObj.ItemsToBeSkipped} ROWS ONLY");
+        sql.Append($"OFFSET {pageObj.ItemsForEachPage} ROWS");
+        sql.Append($"FETCH NEXT {pageObj.ItemsToBeSkipped} ROWS ONLY");
         return sql;
     }
 
+    /// <summary>
+    /// Generate a query to check if the audit table exists inside the database instance
+    /// </summary>
+    /// <returns></returns>
+    public SqlBuilder CheckIfAuditTableExists()
+    {
+        return new SqlBuilder(@"
+            EXEC sp_tables 'AuditEvents'
+            SELECT @@ROWCOUNT
+        ");
+    }
+
+    /// <summary>
+    /// Generate a query for the 'AuditTable' creation script
+    /// </summary>
+    /// <returns></returns>
     public SqlBuilder CreateAuditTable()
     {
         return new SqlBuilder(@"
-            SET ANSI_NULLS ON
-            SET QUOTED_IDENTIFIER ON
-
             /* Create the table */
-            CREATE TABLE [dbo].[AuditEvents](
-	            [AuditID] [int] IDENTITY(1,1) NOT NULL,
-                [AuditLevel] [nvarchar](32) NOT NULL,
-	            [AuditUser] [nvarchar](64) NOT NULL,
-	            [ExecutedOn] [date] NOT NULL,
-	            [DbCommandType] [nvarchar](32) NOT NULL,
-	            [SqlCommandType] [nvarchar](32) NOT NULL,
-	            [SqlCommandOnly] [nvarchar](max) NULL,
-	            [SqlCommandComplete] [nvarchar](max) NULL,
-                [ErrorMessage] [nvarchar](max) NULL
-            ) ON [PRIMARY] TEXTIMAGE_ON [PRIMARY]
-            ALTER TABLE [dbo].[AuditEvents] ADD  CONSTRAINT [PK_AuditEvents] PRIMARY KEY CLUSTERED 
+            CREATE TABLE [dbo].[AuditEvents]
             (
-	            [AuditID] ASC
-            ) WITH (
-                PAD_INDEX = OFF,
-                STATISTICS_NORECOMPUTE = OFF,
-                SORT_IN_TEMPDB = OFF,
-                IGNORE_DUP_KEY = OFF,
-                ONLINE = OFF,
-                ALLOW_ROW_LOCKS = ON,
-                ALLOW_PAGE_LOCKS = ON
-            ) ON [PRIMARY]
+	            [ExecutedOn] [date] NOT NULL,
+	            [SqlQuery] [nvarchar](max) NULL,
+                [IsError] [bit] NOT NULL,
+                [ErrorMessage] [nvarchar](max) NULL
+            )
         ");
     }
 }

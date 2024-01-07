@@ -1,14 +1,28 @@
-﻿// System Class
-using System.Data;
-// Custom Class
+﻿// Custom Class
+using LothiumDB;
+using LothiumDB.Configurations;
+using LothiumDB.Data.Providers;
 using LothiumDB.Extensions;
 using LothiumDB.Tester.TestModels;
-using LothiumDB.Tests;
 
 Console.WriteLine("Start Testing Console Project");
 
 // Generate a new db configuration and build it //
-var db = new TestDatabaseContext();
+var config = new DatabaseContextConfiguration
+{
+    Provider = new MsSqlServerProvider(
+        dataSource: "192.168.1.124",
+        userId: "SA",
+        password: "SntnAndr28021998",
+        initialCatalog: "LothiumDB_Dev",
+        currentLanguage: "Italian",
+        encrypt: false,
+        trustServerCertificate: false
+    ),
+    QueryTimeOut = 30,
+    AuditMode = false
+};
+var db = new DatabaseContext(config);
 var sql = new SqlBuilder();
 
 // Execute test examples //

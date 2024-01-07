@@ -1,12 +1,10 @@
-﻿// System Class
+﻿// System Classes
 using System.Data;
-// Custom Class
+// Custom Classes
 using LothiumDB.Core;
 using LothiumDB.Core.Helpers;
-using LothiumDB.Enumerations;
 using LothiumDB.Extensions;
 using LothiumDB.Configurations;
-using LothiumDB.Data.Models;
 using LothiumDB.Interfaces;
 
 // Namespace
@@ -22,10 +20,11 @@ public class DatabaseContext : IDatabase, IDisposable
 {
     #region Properties
 
-    private readonly DatabaseContextConfiguration _configuration;
+    private readonly DatabaseContextConfiguration _dbConfiguration;
     private IDbConnection? _dbConnection;
     private DatabaseTransactionObject? _dbTransaction;
     private bool _auditExec = false;
+    private bool _auditTableChecked = false;
 
     /// <summary>
     /// Indicates if the current database instance connection is open
@@ -50,32 +49,22 @@ public class DatabaseContext : IDatabase, IDisposable
     }
 
     /// <summary>
-    /// Contains the database's provider
-    /// </summary>
-    public IDatabaseProvider? Provider => _configuration.Provider;
-
-    /// <summary>
     /// Contains the complete last executed query with all parameters replace
     /// </summary>
-    public string? LastExecutedSql { get; private set; }
-
-    /// <summary>
-    /// Contains the last executed query without parameters replace
-    /// </summary>
-    public string? LastExecuteCommandType { get; private set; }
+    public string? LastSql { get; private set; }
 
     /// <summary>
     /// Contains the last database's generated error
     /// </summary>
-    public Exception? LastGeneratedError { get; private set; }
+    public Exception? LastError { get; private set; }
 
     /// <summary>
     /// Contains the database's command timeout value
     /// </summary>
     public int CommandTimeOut
     {
-        get => _configuration.QueryTimeOut;
-        set => _configuration.QueryTimeOut = value;
+        get => _dbConfiguration.QueryTimeOut;
+        set => _dbConfiguration.QueryTimeOut = value;
     }
 
     #endregion
@@ -84,48 +73,15 @@ public class DatabaseContext : IDatabase, IDisposable
 
     /// <summary>
     ///     <para>
-    ///         This overridable method contains all the configuration for this current database context
-    ///         You will need to override it and set all the property with a not null value
-    ///     </para>
-    /// </summary>
-    ///     <example>
-    ///         dbConfiguration.Provider = new MsSqlServerProvider();
-    ///         dbConfiguration.ConnectionString = "[Put here the connection string]"
-    ///         dbConfiguration.AuditMode = false;
-    ///         dbConfiguration.AuditUser = "[Put here the audit user]";
-    ///     </example>
-    /// <param name="dbConfiguration"></param>
-    protected virtual void SetConfiguration(DatabaseContextConfiguration dbConfiguration) { }
-
-    /// <summary>
-    ///     <para>
     ///         this overridable method is executed after a core operation's error
     ///         If the audit mode is enable it will track the error inside the dedicated database's table
     ///         if you override this method you can write your own audit methods
     ///     </para>
     /// </summary>
-    /// <param name="message">Contains the event message</param>
-    protected virtual void PostCommandExecution(string message)
+    protected virtual void PostCommandExecution()
     {
-        // Check if the audit is enabled
-        if (_auditExec) return;
-        
-        // Define the different values to write inside the new audit row
-        var auditLevel = LastGeneratedError is null 
-            ? AuditLevelsEnum.Info 
-            : AuditLevelsEnum.Error;
-        var cmdType = string.IsNullOrEmpty(LastExecuteCommandType)
-            ? DBCommandTypeEnum.None
-            : DatabaseHelper.DefineDatabaseCommandType(LastExecuteCommandType);
-        var sqlType = string.IsNullOrEmpty(LastExecutedSql)
-            ? SqlCommandTypeEnum.None
-            : DatabaseHelper.DefineSqlCommandType(LastExecutedSql);
-        var errMsg = LastGeneratedError is null
-            ? string.Empty
-            : LastGeneratedError.Message;
-        
-        // Generate the new audit event's row
-        NewAuditEvent(auditLevel, cmdType, sqlType, errMsg);
+        // Check if the audit is not enabled, if not write inside the dedicated table the event
+        if (!_auditExec) NewAuditEvent(DateTime.Now, LastSql!, LastError);
     }
     
     /// <summary>
@@ -136,22 +92,7 @@ public class DatabaseContext : IDatabase, IDisposable
     /// <exception cref="ArgumentNullException">Will be generated if one of the configuration's property is not correct</exception>
     private void LoadDatabaseContext()
     {
-        // Set the configuration object
-        SetConfiguration(_configuration);
         
-        // Validate the current loaded configuration
-        DatabaseExceptionHelper.ValidateDatabaseContextConfiguration(_configuration);
-
-        // Set the connection with the configuration's values
-        var connString = _configuration.Provider!.DbConnectionString;
-        _dbConnection = _configuration.Provider!.CreateConnection(connString);
-        _dbConnection.ConnectionString = connString;
-        _dbTransaction = null;
-        
-        // Set the history property to their default values
-        LastGeneratedError = null;
-        LastExecutedSql = string.Empty;
-        LastExecuteCommandType = string.Empty;
     }
 
     /// <summary>
@@ -175,13 +116,12 @@ public class DatabaseContext : IDatabase, IDisposable
         }
         catch (Exception ex)
         {
-            LastGeneratedError = ex;
-            LastExecutedSql = string.Empty;
-            LastExecuteCommandType = string.Empty;
+            LastError = ex;
+            LastSql = string.Empty;
         }
         
         // Add a new audit event inside the database table if the mode is enable
-        PostCommandExecution(System.Reflection.MethodBase.GetCurrentMethod()?.Name ?? string.Empty);
+        PostCommandExecution();
     }
 
     /// <summary>
@@ -201,13 +141,12 @@ public class DatabaseContext : IDatabase, IDisposable
         }
         catch (Exception ex)
         {
-            LastGeneratedError = ex;
-            LastExecutedSql = string.Empty;
-            LastExecuteCommandType = string.Empty;
+            LastError = ex;
+            LastSql = string.Empty;
         }
         
         // Add a new audit event inside the database table if the mode is enable
-        PostCommandExecution(System.Reflection.MethodBase.GetCurrentMethod()?.Name ?? string.Empty);
+        PostCommandExecution();
     }
 
     /// <summary>
@@ -222,7 +161,7 @@ public class DatabaseContext : IDatabase, IDisposable
         {
             // Check if the connection and the configuration object is valid
             DatabaseExceptionHelper.ValidateDatabaseContextConnection(_dbConnection);
-            DatabaseExceptionHelper.ValidateDatabaseContextConfiguration(_configuration);
+            DatabaseExceptionHelper.ValidateDatabaseContextConfiguration(_dbConfiguration);
 
             // Create a new transaction and start it
             _dbTransaction = new DatabaseTransactionObject(_dbConnection);
@@ -230,13 +169,12 @@ public class DatabaseContext : IDatabase, IDisposable
         }
         catch (Exception ex)
         {
-            LastGeneratedError = ex;
-            LastExecutedSql = string.Empty;
-            LastExecuteCommandType = string.Empty;
+            LastError = ex;
+            LastSql = string.Empty;
         }
         
         // Add a new audit event inside the database table if the mode is enable
-        PostCommandExecution(System.Reflection.MethodBase.GetCurrentMethod()?.Name ?? string.Empty);
+        PostCommandExecution();
     }
 
     /// <summary>
@@ -254,13 +192,12 @@ public class DatabaseContext : IDatabase, IDisposable
         }
         catch (Exception ex)
         {
-            LastGeneratedError = ex;
-            LastExecutedSql = string.Empty;
-            LastExecuteCommandType = string.Empty;
+            LastError = ex;
+            LastSql = string.Empty;
         }
         
         // Add a new audit event inside the database table if the mode is enable
-        PostCommandExecution(System.Reflection.MethodBase.GetCurrentMethod()?.Name ?? string.Empty);
+        PostCommandExecution();
     }
 
     /// <summary>
@@ -278,13 +215,12 @@ public class DatabaseContext : IDatabase, IDisposable
         }
         catch (Exception ex)
         {
-            LastGeneratedError = ex;
-            LastExecutedSql = string.Empty;
-            LastExecuteCommandType = string.Empty;
+            LastError = ex;
+            LastSql = string.Empty;
         }
         
         // Add a new audit event inside the database table if the mode is enable
-        PostCommandExecution(System.Reflection.MethodBase.GetCurrentMethod()?.Name ?? string.Empty);
+        PostCommandExecution();
     }
 
     /// <summary>
@@ -299,7 +235,7 @@ public class DatabaseContext : IDatabase, IDisposable
     {
         // Check if the minimum required variables are correctly sets
         ArgumentNullException.ThrowIfNull(_dbConnection);
-        ArgumentNullException.ThrowIfNull(_configuration.Provider);
+        ArgumentNullException.ThrowIfNull(_dbConfiguration.Provider);
         ArgumentNullException.ThrowIfNull(sql);
         
         // Check if the query is empty
@@ -325,11 +261,7 @@ public class DatabaseContext : IDatabase, IDisposable
                 switch (commandType)
                 {
                     case CommandType.Text:
-                        DatabaseHelper.AddParamsToDatabaseCommand(
-                            _configuration.Provider,
-                            ref command,
-                            sql
-                        );
+                        DatabaseHelper.AddParamsToDatabaseCommand(_dbConfiguration.Provider, ref command, sql);
                         break;
                     case CommandType.TableDirect:
                         //
@@ -348,30 +280,38 @@ public class DatabaseContext : IDatabase, IDisposable
         }
         catch (Exception ex)
         {
-            LastGeneratedError = ex;
-            LastExecutedSql = string.Empty;
-            LastExecuteCommandType = string.Empty;
+            LastError = ex;
+            LastSql = string.Empty;
         }
         
         // Add a new audit event inside the database table if the mode is enable
-        PostCommandExecution(System.Reflection.MethodBase.GetCurrentMethod()?.Name ?? string.Empty);
+        PostCommandExecution();
         
         return command;
     }
-    
-    /// <summary>
-    /// Create a new Database Instance
-    /// </summary>
-    protected DatabaseContext()
+
+    public DatabaseContext(DatabaseContextConfiguration configuration)
     {
-        _configuration = new DatabaseContextConfiguration();
-        LoadDatabaseContext();
+        // Set the configuration object
+        _dbConfiguration = configuration;
+        
+        // Validate the current loaded configuration
+        DatabaseExceptionHelper.ValidateDatabaseContextConfiguration(_dbConfiguration);
+        
+        // Set the connection with the configuration's values
+        _dbConnection = _dbConfiguration.Provider!.CreateConnection();
+        _dbTransaction = null;
+        
+        // Set the history property to their default values
+        LastError = null;
+        LastSql = string.Empty;
     }
 
     /// <summary>
     /// Dispose the Database Instance Previously Created
     /// </summary>
-    public void Dispose() => GC.SuppressFinalize(this);
+    public void Dispose() 
+        => GC.SuppressFinalize(this);
     
     #endregion
 
@@ -392,7 +332,7 @@ public class DatabaseContext : IDatabase, IDisposable
         // If the query is empty it will return a default value
         if (string.IsNullOrEmpty(sql.Query)) return result!;
         
-        LastExecutedSql = sql.ToFormatQuery();
+        LastSql = sql.ToFormatQuery();
 
         // Execute the query
         try
@@ -401,8 +341,6 @@ public class DatabaseContext : IDatabase, IDisposable
 
             var cmd = CreateCommand(CommandType.Text, sql);
             if (cmd is null) throw new Exception(nameof(cmd));
-
-            LastExecuteCommandType = Enum.GetName(typeof(CommandType), cmd.CommandType);
             
             using (cmd)
             {
@@ -411,7 +349,7 @@ public class DatabaseContext : IDatabase, IDisposable
         }
         catch (Exception ex)
         {
-            LastGeneratedError = ex;
+            LastError = ex;
             result = default;
         }
         finally
@@ -420,7 +358,7 @@ public class DatabaseContext : IDatabase, IDisposable
         }
 
         // Add a new audit event inside the database table if the mode is enable
-        PostCommandExecution(System.Reflection.MethodBase.GetCurrentMethod()?.Name ?? string.Empty);
+        PostCommandExecution();
         
         return result!;
     }
@@ -451,7 +389,7 @@ public class DatabaseContext : IDatabase, IDisposable
         // If the query is empty it will return a default value
         if (string.IsNullOrEmpty(sql.Query)) return affectedRowOnCommand;
         
-        LastExecutedSql = sql.ToFormatQuery();
+        LastSql = sql.ToFormatQuery();
 
         // Execute the query
         try
@@ -460,8 +398,6 @@ public class DatabaseContext : IDatabase, IDisposable
 
             var cmd = CreateCommand(CommandType.Text, sql);
             if (cmd is null) throw new Exception(nameof(cmd));
-
-            LastExecuteCommandType = Enum.GetName(typeof(CommandType), cmd.CommandType);
             
             using (cmd)
             {
@@ -471,7 +407,7 @@ public class DatabaseContext : IDatabase, IDisposable
         catch (Exception ex)
         {
             // Add to info of the last executed command after an error
-            LastGeneratedError = ex;
+            LastError = ex;
             affectedRowOnCommand = -1;
         }
         finally
@@ -480,7 +416,7 @@ public class DatabaseContext : IDatabase, IDisposable
         }
 
         // Add a new audit event inside the database table if the mode is enable
-        PostCommandExecution(System.Reflection.MethodBase.GetCurrentMethod()?.Name ?? string.Empty);
+        PostCommandExecution();
 
         return affectedRowOnCommand;
     }
@@ -512,7 +448,7 @@ public class DatabaseContext : IDatabase, IDisposable
         // If the query is empty it will return an empty list of the passed type
         if (string.IsNullOrEmpty(sql.Query)) return Enumerable.Empty<T>();
         
-        LastExecutedSql = sql.ToFormatQuery();
+        LastSql = sql.ToFormatQuery();
 
         // Execute the query
         try
@@ -524,8 +460,6 @@ public class DatabaseContext : IDatabase, IDisposable
 
             var cmd = CreateCommand(CommandType.Text, sql);
             if (cmd is null) throw new Exception(nameof(cmd));
-
-            LastExecuteCommandType = Enum.GetName(typeof(CommandType), cmd.CommandType);
             
             using (cmd)
             {
@@ -560,7 +494,7 @@ public class DatabaseContext : IDatabase, IDisposable
         }
         catch (Exception ex)
         {
-            LastGeneratedError = ex;
+            LastError = ex;
             list = null;
         }
         finally
@@ -569,7 +503,7 @@ public class DatabaseContext : IDatabase, IDisposable
         }
 
         // Add a new audit event inside the database table if the mode is enable
-        PostCommandExecution(System.Reflection.MethodBase.GetCurrentMethod()?.Name ?? string.Empty);
+        PostCommandExecution();
 
         return list!;
     }
@@ -593,59 +527,43 @@ public class DatabaseContext : IDatabase, IDisposable
     /// <summary>
     /// Methods that add a new Audit Event inside the database dedicated table
     /// </summary>
-    /// <param name="level">Contains the level of the current action</param>
-    /// <param name="cmdType">Contains the type of the current action's command</param>
-    /// <param name="sqlType">Contains the type of the current action's query</param>
-    /// <param name="errorMsg">Contains an optional error message</param>
-    private void NewAuditEvent(
-        AuditLevelsEnum level, 
-        DBCommandTypeEnum cmdType, 
-        SqlCommandTypeEnum sqlType,
-        string? errorMsg = null
-    )
+    /// <param name="executedDateTime">Indicates when the event was performed</param>
+    /// <param name="sqlQuery">Contains the actual performed query</param>
+    /// <param name="dbError">Contains an occured error</param>
+    private void NewAuditEvent(DateTime executedDateTime, string? sqlQuery, Exception? dbError)
     {
         // Check the if the required variables are correctly sets
-        if (!_configuration.AuditMode) return;
-        if (string.IsNullOrEmpty(LastExecuteCommandType)) return;
-        if (string.IsNullOrEmpty(LastExecutedSql)) return;
+        if (!_dbConfiguration.AuditMode) return;
 
         // Set a true the audit action flag
         _auditExec = true;
-
-        // Verify if the audit table already exists, if not will create it
-        if (Scalar<int>(
-            new SqlBuilder(@"
-                IF (
-                    EXISTS 
-                    (
-                        SELECT  *
-                        FROM    INFORMATION_SCHEMA.TABLES
-                        WHERE   TABLE_SCHEMA = @0
-                                AND TABLE_NAME = @1
-                    )
-                )
-                BEGIN
-                    SELECT 1
-                END
-                ELSE
-                BEGIN
-                	SELECT 0
-                END
-            ", "dbo", "AuditEvents")
-        ) != 1) Execute(Provider!.CreateAuditTable());
-
-        // Insert the new event inside the audit table
-        Insert<AuditModel>(new AuditModel()
+        
+        // If the audit table not exists it will create it
+        if (!_auditTableChecked && (_dbConfiguration.AuditMode && Execute(_dbConfiguration.Provider!.CheckIfAuditTableExists()) != 1))
         {
-            Level = Enum.GetName(level.GetType(), level),
-            User = _configuration.AuditUser,
-            ExecutedOnDate = DateTime.Now,
-            DatabaseCommandType = Enum.GetName(cmdType.GetType(), cmdType),
-            SqlCommandType = Enum.GetName(sqlType.GetType(), sqlType),
-            SqlCommandWithoutParams = LastExecuteCommandType,
-            SqlCommandWithParams = LastExecutedSql,
-            ErrorMsg = errorMsg
-        });
+            if (Execute(_dbConfiguration.Provider!.CreateAuditTable()) > 0) 
+                _auditExec = true;
+        }
+        
+        // Insert the new event inside the audit table
+        var sql = new SqlBuilder().InsertIntoTable(
+            "AuditEvents",
+            new object[]
+            {
+                "ExecutedOn",
+                "SqlQuery", 
+                "IsError", 
+                "ErrorMessage"
+            },
+            new object[]
+            {
+                executedDateTime,
+                sqlQuery ?? string.Empty,
+                dbError is null ? 0 : 1,
+                dbError is null ? string.Empty : dbError.Message
+            }
+        );
+        Execute(sql);
 
         // Set a false the audit's execution flag
         _auditExec = false;
@@ -724,8 +642,8 @@ public class DatabaseContext : IDatabase, IDisposable
     /// <returns>A value based of the object type</returns>
     public List<T> FetchPage<T>(PageObject<T> page, SqlBuilder sql)
     {
-        if (_configuration.Provider is null) return (List<T>)Enumerable.Empty<T>();
-        var pageSql = _configuration.Provider.BuildPageQuery<T>(page, sql);
+        if (_dbConfiguration.Provider is null) return (List<T>)Enumerable.Empty<T>();
+        var pageSql = _dbConfiguration.Provider.BuildPageQuery<T>(page, sql);
         return (List<T>)(string.IsNullOrEmpty(pageSql.Query) ? Enumerable.Empty<T>() : Query<T>(pageSql).ToList());
     }
 

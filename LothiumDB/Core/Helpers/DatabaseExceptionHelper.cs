@@ -23,11 +23,11 @@ internal static class DatabaseExceptionHelper
     {
         ArgumentNullException.ThrowIfNull(dbConfiguration);
         ArgumentNullException.ThrowIfNull(dbConfiguration.Provider);
-        if (dbConfiguration.Provider.DbProviderType == ProviderTypesEnum.None)
+        if (dbConfiguration.Provider.GetProviderType() == ProviderTypesEnum.None)
             throw new ArgumentException("Provider's Type Not Valid!");
-        if (string.IsNullOrEmpty(dbConfiguration.Provider.DbConnectionString))
+        if (string.IsNullOrEmpty(dbConfiguration.Provider.GetConnectionString()))
             throw new ArgumentException("Connection String Not Specified!");
-        if (string.IsNullOrEmpty(dbConfiguration.Provider.DbVariablePrefix))
+        if (string.IsNullOrEmpty(dbConfiguration.Provider.GetVariablePrefix()))
             throw new ArgumentException("Variable Prefix Not Specified!");
     }
 
