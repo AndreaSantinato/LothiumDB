@@ -36,9 +36,9 @@ Change project folder organization.</PackageReleaseNotes>
     <None Remove="Microsoft.Data.SqlClient" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="MySql.Data" Version="8.2.0" />
-    <PackageReference Include="Npgsql" Version="7.0.6" />
-    <PackageReference Include="System.Data.SqlClient" Version="4.8.5" />
+    <PackageReference Include="MySql.Data" Version="8.3.0" />
+    <PackageReference Include="Npgsql" Version="8.0.1" />
+    <PackageReference Include="System.Data.SqlClient" Version="4.8.6" />
   </ItemGroup>
   <ItemGroup>
     <Compile Remove="Core\LothiumObject.cs" />
