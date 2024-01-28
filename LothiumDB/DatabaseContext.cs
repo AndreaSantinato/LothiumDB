@@ -21,7 +21,7 @@ public class DatabaseContext : IDatabase, IDisposable
     #region Properties
 
     private readonly DatabaseContextConfiguration _dbConfiguration;
-    private IDbConnection? _dbConnection;
+    private readonly IDbConnection? _dbConnection;
     private DatabaseTransactionObject? _dbTransaction;
     private bool _auditExec = false;
     private bool _auditTableChecked = false;
@@ -34,7 +34,7 @@ public class DatabaseContext : IDatabase, IDisposable
         get
         {
             if (_dbConnection is null) return false;
-            
+
             return _dbConnection.State switch
             {
                 ConnectionState.Open => true,
@@ -83,17 +83,6 @@ public class DatabaseContext : IDatabase, IDisposable
         // Check if the audit is not enabled, if not write inside the dedicated table the event
         if (!_auditExec) NewAuditEvent(DateTime.Now, LastSql!, LastError);
     }
-    
-    /// <summary>
-    ///     <para>
-    ///         Internal private method that load the new database context using the assigned configuration
-    ///     </para>
-    /// </summary>
-    /// <exception cref="ArgumentNullException">Will be generated if one of the configuration's property is not correct</exception>
-    private void LoadDatabaseContext()
-    {
-        
-    }
 
     /// <summary>
     ///     <para>
@@ -107,10 +96,10 @@ public class DatabaseContext : IDatabase, IDisposable
         {
             // If there is already an open transaction it will do nothing
             if (_dbTransaction is not null) return;
-            
+
             // Validate the current connection object
             DatabaseExceptionHelper.ValidateDatabaseContextConnection(_dbConnection);
-            
+
             // Open a new connection
             _dbConnection.Open();
         }
@@ -119,7 +108,7 @@ public class DatabaseContext : IDatabase, IDisposable
             LastError = ex;
             LastSql = string.Empty;
         }
-        
+
         // Add a new audit event inside the database table if the mode is enable
         PostCommandExecution();
     }
@@ -144,7 +133,7 @@ public class DatabaseContext : IDatabase, IDisposable
             LastError = ex;
             LastSql = string.Empty;
         }
-        
+
         // Add a new audit event inside the database table if the mode is enable
         PostCommandExecution();
     }
@@ -172,7 +161,7 @@ public class DatabaseContext : IDatabase, IDisposable
             LastError = ex;
             LastSql = string.Empty;
         }
-        
+
         // Add a new audit event inside the database table if the mode is enable
         PostCommandExecution();
     }
@@ -195,7 +184,7 @@ public class DatabaseContext : IDatabase, IDisposable
             LastError = ex;
             LastSql = string.Empty;
         }
-        
+
         // Add a new audit event inside the database table if the mode is enable
         PostCommandExecution();
     }
@@ -218,7 +207,7 @@ public class DatabaseContext : IDatabase, IDisposable
             LastError = ex;
             LastSql = string.Empty;
         }
-        
+
         // Add a new audit event inside the database table if the mode is enable
         PostCommandExecution();
     }
@@ -237,9 +226,9 @@ public class DatabaseContext : IDatabase, IDisposable
         ArgumentNullException.ThrowIfNull(_dbConnection);
         ArgumentNullException.ThrowIfNull(_dbConfiguration.Provider);
         ArgumentNullException.ThrowIfNull(sql);
-        
+
         // Check if the query is empty
-        if (string.IsNullOrEmpty(sql.Query)) 
+        if (string.IsNullOrEmpty(sql.Query))
             throw new ArgumentException(nameof(sql.Query));
 
         // Create the new command
@@ -249,7 +238,7 @@ public class DatabaseContext : IDatabase, IDisposable
             command = _dbTransaction is null
                 ? _dbConnection.CreateCommand()
                 : _dbTransaction.Connection.CreateCommand();
-            
+
             ArgumentNullException.ThrowIfNull(command);
 
             command.Transaction = _dbTransaction?.Transaction;
@@ -283,10 +272,10 @@ public class DatabaseContext : IDatabase, IDisposable
             LastError = ex;
             LastSql = string.Empty;
         }
-        
+
         // Add a new audit event inside the database table if the mode is enable
         PostCommandExecution();
-        
+
         return command;
     }
 
@@ -294,14 +283,14 @@ public class DatabaseContext : IDatabase, IDisposable
     {
         // Set the configuration object
         _dbConfiguration = configuration;
-        
+
         // Validate the current loaded configuration
         DatabaseExceptionHelper.ValidateDatabaseContextConfiguration(_dbConfiguration);
-        
+
         // Set the connection with the configuration's values
         _dbConnection = _dbConfiguration.Provider!.CreateConnection();
         _dbTransaction = null;
-        
+
         // Set the history property to their default values
         LastError = null;
         LastSql = string.Empty;
@@ -310,9 +299,9 @@ public class DatabaseContext : IDatabase, IDisposable
     /// <summary>
     /// Dispose the Database Instance Previously Created
     /// </summary>
-    public void Dispose() 
+    public void Dispose()
         => GC.SuppressFinalize(this);
-    
+
     #endregion
 
     #region Scalar, Execute, Query Commands
@@ -331,7 +320,7 @@ public class DatabaseContext : IDatabase, IDisposable
 
         // If the query is empty it will return a default value
         if (string.IsNullOrEmpty(sql.Query)) return result!;
-        
+
         LastSql = sql.ToFormatQuery();
 
         // Execute the query
@@ -341,7 +330,7 @@ public class DatabaseContext : IDatabase, IDisposable
 
             var cmd = CreateCommand(CommandType.Text, sql);
             if (cmd is null) throw new Exception(nameof(cmd));
-            
+
             using (cmd)
             {
                 result = (T)cmd.ExecuteScalar()! ?? default;
@@ -359,7 +348,7 @@ public class DatabaseContext : IDatabase, IDisposable
 
         // Add a new audit event inside the database table if the mode is enable
         PostCommandExecution();
-        
+
         return result!;
     }
 
@@ -388,7 +377,7 @@ public class DatabaseContext : IDatabase, IDisposable
 
         // If the query is empty it will return a default value
         if (string.IsNullOrEmpty(sql.Query)) return affectedRowOnCommand;
-        
+
         LastSql = sql.ToFormatQuery();
 
         // Execute the query
@@ -398,7 +387,7 @@ public class DatabaseContext : IDatabase, IDisposable
 
             var cmd = CreateCommand(CommandType.Text, sql);
             if (cmd is null) throw new Exception(nameof(cmd));
-            
+
             using (cmd)
             {
                 affectedRowOnCommand = cmd.ExecuteNonQuery();
@@ -447,7 +436,7 @@ public class DatabaseContext : IDatabase, IDisposable
 
         // If the query is empty it will return an empty list of the passed type
         if (string.IsNullOrEmpty(sql.Query)) return Enumerable.Empty<T>();
-        
+
         LastSql = sql.ToFormatQuery();
 
         // Execute the query
@@ -460,7 +449,7 @@ public class DatabaseContext : IDatabase, IDisposable
 
             var cmd = CreateCommand(CommandType.Text, sql);
             if (cmd is null) throw new Exception(nameof(cmd));
-            
+
             using (cmd)
             {
                 var cmdReader = cmd.ExecuteReader();
@@ -507,7 +496,7 @@ public class DatabaseContext : IDatabase, IDisposable
 
         return list!;
     }
-    
+
     /// <summary>
     ///     <para>
     ///         Invoke the DB Query command in the Database Instance and cast it to a specific object type
@@ -532,27 +521,34 @@ public class DatabaseContext : IDatabase, IDisposable
     /// <param name="dbError">Contains an occured error</param>
     private void NewAuditEvent(DateTime executedDateTime, string? sqlQuery, Exception? dbError)
     {
+        SqlBuilder? sql;
+        
         // Check the if the required variables are correctly sets
         if (!_dbConfiguration.AuditMode) return;
 
         // Set a true the audit action flag
         _auditExec = true;
-        
+
         // If the audit table not exists it will create it
-        if (!_auditTableChecked && (_dbConfiguration.AuditMode && Execute(_dbConfiguration.Provider!.CheckIfAuditTableExists()) != 1))
+        if (!_auditTableChecked && _dbConfiguration.AuditMode)
         {
-            if (Execute(_dbConfiguration.Provider!.CreateAuditTable()) > 0) 
-                _auditExec = true;
+            sql = _dbConfiguration.Provider!.CheckIfAuditTableExists();
+            if (Execute(sql) == 0)
+            {
+                sql = _dbConfiguration.Provider!.CreateAuditTable();
+                Execute(sql);
+            }
+            _auditTableChecked = true;
         }
-        
+
         // Insert the new event inside the audit table
-        var sql = new SqlBuilder().InsertIntoTable(
+        sql = new SqlBuilder().InsertIntoTable(
             "AuditEvents",
             new object[]
             {
                 "ExecutedOn",
-                "SqlQuery", 
-                "IsError", 
+                "SqlQuery",
+                "IsError",
                 "ErrorMessage"
             },
             new object[]
@@ -580,7 +576,6 @@ public class DatabaseContext : IDatabase, IDisposable
     public List<T> FindAll<T>()
         => FindAll<T>(DatabaseAutoQueryHelper.AutoSelectClause<T>());
 
-
     /// <summary>
     /// Select all the elements inside a table with a specify Sql query
     /// </summary>
@@ -588,7 +583,12 @@ public class DatabaseContext : IDatabase, IDisposable
     /// <param name="sql">Contains the SQL object</param>
     /// <returns>A value based of the object type</returns>
     public List<T> FindAll<T>(SqlBuilder sql)
-        => Query<T>(sql).ToList();
+    {
+        var result = Query<T>(sql);
+        return (result is null) 
+            ? Enumerable.Empty<T>().ToList()
+            : result.ToList();
+    }
 
     /// <summary>
     /// Select all the elements inside a table with a specify Sql query
@@ -686,12 +686,12 @@ public class DatabaseContext : IDatabase, IDisposable
         var affectedRows = 0;
         objs.ForEach(x =>
         {
-            if (x is not null) 
+            if (x is not null)
                 affectedRows += (int)Insert<T>(x);
         });
         return affectedRows;
     }
-    
+
     /// <summary>
     ///     <para>
     ///         Update a number of element inside a table of the database
@@ -716,12 +716,12 @@ public class DatabaseContext : IDatabase, IDisposable
         var affectedRows = 0;
         objs.ForEach(x =>
         {
-            if (x is not null) 
+            if (x is not null)
                 affectedRows += (int)Update<T>(x);
         });
         return affectedRows;
     }
-    
+
     /// <summary>
     ///     <para>
     ///         Delete a number of element inside a table of the database
@@ -745,12 +745,12 @@ public class DatabaseContext : IDatabase, IDisposable
         var affectedRows = 0;
         objs.ForEach(x =>
         {
-            if (x is not null) 
+            if (x is not null)
                 affectedRows += (int)Update<T>(x);
         });
         return affectedRows;
     }
-    
+
     /// <summary>
     ///     <para>
     ///         If an object already exist inside the database will update it, otherwise will create it
