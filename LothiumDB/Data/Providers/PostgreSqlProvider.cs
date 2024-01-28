@@ -15,11 +15,14 @@ namespace LothiumDB.Data.Providers;
 /// </summary>
 public sealed class PostgreSqlProvider : BaseProvider, IProvider
 {
+    #region Provider's Constructors
+    
     /// <summary>
     /// Create a new instance of the PostgreSql database provider
     /// </summary>
     /// <param name="connectionString">Contains the specific connection string</param>
-    public PostgreSqlProvider(string connectionString) : base(ProviderTypesEnum.PostgreSql, connectionString, "@") { }
+    public PostgreSqlProvider(string connectionString) 
+        : base(ProviderTypesEnum.PostgreSql, connectionString, "@") { }
     
     /// <summary>
     /// Create a new instance of the MsSqlServer database provider
@@ -28,13 +31,11 @@ public sealed class PostgreSqlProvider : BaseProvider, IProvider
     /// <param name="username">Contains the user</param>
     /// <param name="password">Contains the password</param>
     /// <param name="database">Contains the database's name</param>
-    /// <param name="trustServerCertificate">Indicates if the database instance need a trusted certificate</param>
     public PostgreSqlProvider(
         string host,
         string username,
         string password,
-        string database,
-        bool trustServerCertificate
+        string database
     ) : this(
         new NpgsqlConnectionStringBuilder()
         {
@@ -42,11 +43,14 @@ public sealed class PostgreSqlProvider : BaseProvider, IProvider
             Host = host,
             Username = username,
             Password = password,
-            Database = database,
-            TrustServerCertificate = trustServerCertificate
+            Database = database
         }.ConnectionString
     ) { }
 
+    #endregion Provider's Constructors
+    
+    #region Provider's Property
+    
     /// <summary>
     /// Get the provider's type
     /// </summary>
@@ -65,6 +69,10 @@ public sealed class PostgreSqlProvider : BaseProvider, IProvider
     /// <returns>A Specific Variable's Prefix For Database Parameters</returns>
     public string? GetVariablePrefix() => base.VariablePrefix;
 
+    #endregion Provider's Property
+    
+    #region Provider's Methods
+    
     /// <summary>
     /// Create a new connection based on specified connection string
     /// </summary>
@@ -72,16 +80,12 @@ public sealed class PostgreSqlProvider : BaseProvider, IProvider
     /// <exception cref="ArgumentNullException">Generate an exception if the connection string is null or empty</exception>
     public IDbConnection CreateConnection()
     {
-        // Check if the passed or generated connection string is null or empty
-        // before create a new database's connection
+        // 1) Check if the passed/generated connection string is correct before create a new database's connection
+        // 2) Generate the new connection string object
+        // 3) Return the final result
+        
         ArgumentNullException.ThrowIfNull(base.ConnectionString);
-        
-        // Create the new database connection and set the connection string
-        var conn = new NpgsqlConnection(base.ConnectionString);
-        conn.ConnectionString = base.ConnectionString;
-        
-        // Return the final generated connection
-        return conn;
+        return new NpgsqlConnection(base.ConnectionString);
     }
 
     /// <summary>
@@ -93,7 +97,9 @@ public sealed class PostgreSqlProvider : BaseProvider, IProvider
     /// <returns></returns>
     public SqlBuilder BuildPageQuery<T>(PageObject<T> pageObj, SqlBuilder sql)
     {
-        throw new NotImplementedException();
+        return sql
+            .Append($"LIMIT {pageObj.ItemsForEachPage}")
+            .Append($"OFFSET {pageObj.ItemsToBeSkipped}");
     }
 
     /// <summary>
@@ -102,7 +108,15 @@ public sealed class PostgreSqlProvider : BaseProvider, IProvider
     /// <returns></returns>
     public SqlBuilder CheckIfAuditTableExists()
     {
-        throw new NotImplementedException();
+        return new SqlBuilder(@"
+            /* Check if audit table exists inside the database instance */
+
+            SELECT EXISTS (
+                SELECT FROM pg_tables
+                WHERE  schemaname = @0
+                AND    tablename  = @1
+            );
+        ", new NpgsqlConnectionStringBuilder(this.ConnectionString).Database!, "AuditEvents");
     }
     
     /// <summary>
@@ -111,6 +125,20 @@ public sealed class PostgreSqlProvider : BaseProvider, IProvider
     /// <returns></returns>
     public SqlBuilder CreateAuditTable()
     {
-        throw new NotImplementedException();
+        return new SqlBuilder($@"
+            /* 
+                Script Generated On: {DateTime.Now:yyyy/MM/dd hh:mm:ss}
+                Script Description: Create the 'AuditEvents' table inside the database instance 
+            */
+
+            CREATE TABLE employees (
+                query_execution_date DATE NOT NULL,
+                query_text VARCHAR(MAX) NULL,
+                query_error BOOLEAN NOT NULL,
+                query_error_message VARCHAR(MAX) NULL
+            );
+        ");
     }
+    
+    #endregion Provider's Methods
 }

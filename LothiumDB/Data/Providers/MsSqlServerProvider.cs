@@ -14,11 +14,14 @@ namespace LothiumDB.Data.Providers;
 /// </summary>
 public class MsSqlServerProvider : BaseProvider, IProvider
 {
+    #region Provider's Constructors
+    
     /// <summary>
     /// Create a new instance of the MsSqlServer database provider
     /// </summary>
     /// <param name="connectionString">Contains the specific connection string</param>
-    public MsSqlServerProvider(string connectionString) : base(ProviderTypesEnum.MicrosoftSqlServer, connectionString, "@") { }
+    public MsSqlServerProvider(string connectionString) 
+        : base(ProviderTypesEnum.MicrosoftSqlServer, connectionString, "@") { }
 
     /// <summary>
     /// Create a new instance of the MsSqlServer database provider
@@ -53,6 +56,10 @@ public class MsSqlServerProvider : BaseProvider, IProvider
         }.ConnectionString
     ) { }
 
+    #endregion Provider's Constructors
+    
+    #region Provider's Property
+    
     /// <summary>
     /// Get the provider's type
     /// </summary>
@@ -71,6 +78,10 @@ public class MsSqlServerProvider : BaseProvider, IProvider
     /// <returns>A Specific Variable's Prefix For Database Parameters</returns>
     public string? GetVariablePrefix() => base.VariablePrefix;
 
+    #endregion Provider's Property
+    
+    #region Provider's Methods
+    
     /// <summary>
     /// Create a new connection based on specified connection string
     /// </summary>
@@ -78,16 +89,12 @@ public class MsSqlServerProvider : BaseProvider, IProvider
     /// <exception cref="ArgumentNullException">Generate an exception if the connection string is null or empty</exception>
     public IDbConnection CreateConnection()
     {
-        // Check if the passed or generated connection string is null or empty
-        // before create a new database's connection
+        // 1) Check if the passed/generated connection string is correct before create a new database's connection
+        // 2) Generate the new connection string object
+        // 3) Return the final result
+        
         ArgumentNullException.ThrowIfNull(base.ConnectionString);
-        
-        // Create the new database connection and set the connection string
-        var conn = new SqlConnection(base.ConnectionString);
-        conn.ConnectionString = base.ConnectionString;
-        
-        // Return the final generated connection
-        return conn;
+        return new SqlConnection(base.ConnectionString);
     }
 
     /// <summary>
@@ -99,9 +106,9 @@ public class MsSqlServerProvider : BaseProvider, IProvider
     /// <returns></returns>
     public SqlBuilder BuildPageQuery<T>(PageObject<T> pageObj, SqlBuilder sql)
     {
-        sql.Append($"OFFSET {pageObj.ItemsForEachPage} ROWS");
-        sql.Append($"FETCH NEXT {pageObj.ItemsToBeSkipped} ROWS ONLY");
-        return sql;
+        return sql
+            .Append($"OFFSET {pageObj.ItemsForEachPage} ROWS")
+            .Append($"FETCH NEXT {pageObj.ItemsToBeSkipped} ROWS ONLY");
     }
 
     /// <summary>
@@ -111,9 +118,13 @@ public class MsSqlServerProvider : BaseProvider, IProvider
     public SqlBuilder CheckIfAuditTableExists()
     {
         return new SqlBuilder(@"
-            EXEC sp_tables 'AuditEvents'
-            SELECT @@ROWCOUNT
-        ");
+            /* Check if audit table exists inside the database instance */
+
+            SELECT  COUNT(*)
+            FROM    INFORMATION_SCHEMA.TABLES
+            WHERE   TABLE_SCHEMA = @0
+                    AND TABLE_NAME = @1
+        ", "dbo", "AuditEvents");
     }
 
     /// <summary>
@@ -122,15 +133,21 @@ public class MsSqlServerProvider : BaseProvider, IProvider
     /// <returns></returns>
     public SqlBuilder CreateAuditTable()
     {
-        return new SqlBuilder(@"
-            /* Create the table */
+        return new SqlBuilder($@"
+            /* 
+                Script Generated On: {DateTime.Now:yyyy/MM/dd hh:mm:ss}
+                Script Description: Create the 'AuditEvents' table inside the database instance 
+            */
+
             CREATE TABLE [dbo].[AuditEvents]
             (
-	            [ExecutedOn] [date] NOT NULL,
-	            [SqlQuery] [nvarchar](max) NULL,
-                [IsError] [bit] NOT NULL,
-                [ErrorMessage] [nvarchar](max) NULL
+	            [query_execution_date] [date] NOT NULL,
+	            [query_text] [nvarchar](max) NULL,
+                [query_error] [bit] NOT NULL,
+                [query_error_message] [nvarchar](max) NULL
             )
         ");
     }
+    
+    #endregion Provider's Methods
 }

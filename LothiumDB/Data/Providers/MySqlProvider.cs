@@ -15,11 +15,14 @@ namespace LothiumDB.Data.Providers;
 /// </summary>
 public class MySqlProvider : BaseProvider, IProvider
 {
+    #region Provider's Constructors
+    
     /// <summary>
     /// Create a new instance of the MySql database provider
     /// </summary>
     /// <param name="connectionString">Contains the specific connection string</param>
-    public MySqlProvider(string connectionString) : base(ProviderTypesEnum.MySql, connectionString, "@") { }
+    public MySqlProvider(string connectionString) 
+        : base(ProviderTypesEnum.MySql, connectionString, "@") { }
 
     /// <summary>
     /// Create a new instance of the MySql database provider
@@ -47,6 +50,10 @@ public class MySqlProvider : BaseProvider, IProvider
         }.ConnectionString
     ) { }
 
+    #endregion Provider's Constructors
+    
+    #region Provider's Property
+    
     /// <summary>
     /// Get the provider's type
     /// </summary>
@@ -65,6 +72,10 @@ public class MySqlProvider : BaseProvider, IProvider
     /// <returns>A Specific Variable's Prefix For Database Parameters</returns>
     public string? GetVariablePrefix() => base.VariablePrefix;
 
+    #endregion Provider's Property
+    
+    #region Provider's Methods
+    
     /// <summary>
     /// Create a new connection based on specified connection string
     /// </summary>
@@ -72,16 +83,12 @@ public class MySqlProvider : BaseProvider, IProvider
     /// <exception cref="ArgumentNullException">Generate an exception if the connection string is null or empty</exception>
     public IDbConnection CreateConnection()
     {
-        // Check if the passed or generated connection string is null or empty
-        // before create a new database's connection
+        // 1) Check if the passed/generated connection string is correct before create a new database's connection
+        // 2) Generate the new connection string object
+        // 3) Return the final result
+        
         ArgumentNullException.ThrowIfNull(base.ConnectionString);
-        
-        // Create the new database connection and set the connection string
-        var conn = new MySqlConnection(base.ConnectionString);
-        conn.ConnectionString = base.ConnectionString;
-        
-        // Return the final generated connection
-        return conn;
+        return new MySqlConnection(base.ConnectionString);
     }
 
     /// <summary>
@@ -93,8 +100,9 @@ public class MySqlProvider : BaseProvider, IProvider
     /// <returns></returns>
     public SqlBuilder BuildPageQuery<T>(PageObject<T> pageObj, SqlBuilder sql)
     {
-        sql.Append($"LIMIT {pageObj.ItemsForEachPage}").Append($"OFFSET {pageObj.ItemsToBeSkipped}");
-        return sql;
+        return sql
+            .Append($"LIMIT {pageObj.ItemsForEachPage}")
+            .Append($"OFFSET {pageObj.ItemsToBeSkipped}");
     }
     
     /// <summary>
@@ -104,9 +112,14 @@ public class MySqlProvider : BaseProvider, IProvider
     public SqlBuilder CheckIfAuditTableExists()
     {
         return new SqlBuilder(@"
-            SHOW TABLES LIKE 'AuditEvents';
-            SELECT FOUND_ROWS();
-        ");
+            /* Check if audit table exists inside the database instance */
+
+            SELECT  * 
+            FROM    information_schema.tables
+            WHERE   table_schema = @0 
+                    AND table_name = @1
+            LIMIT 1;
+        ", new MySqlConnectionStringBuilder(this.ConnectionString).Database, "AuditEvents");
     }
     
     /// <summary>
@@ -115,27 +128,21 @@ public class MySqlProvider : BaseProvider, IProvider
     /// <returns></returns>
     public SqlBuilder CreateAuditTable()
     {
-        return new SqlBuilder(@"
-            /* Create the table */
+        return new SqlBuilder($@"
+            /* 
+                Script Generated On: {DateTime.Now:yyyy/MM/dd hh:mm:ss}
+                Script Description: Create the 'AuditEvents' table inside the database instance 
+            */
 
             CREATE TABLE AuditEvents
             (
-	            AuditID int NOT NULL,
-                AuditLevel nvarchar(32) NOT NULL,
-	            AuditUser nvarchar(64) NOT NULL,
-	            ExecutedOn date NOT NULL,
-	            DbCommandType nvarchar(32) NOT NULL,
-	            SqlCommandType nvarchar(32) NOT NULL,
-	            SqlCommandOnly nvarchar(255),
-	            SqlCommandComplete nvarchar(255),
-                ErrorMessage nvarchar(255)
+	            query_execution_date date NOT NULL,
+                query_text nvarchar(max) NULL,
+                query_error bit NOT NULL,
+                query_error_message nvarchar(max) NULL
             );
-
-            /* Add the primary key */
-            ALTER TABLE AuditEvents ADD PRIMARY KEY(AuditID);
-
-            /* Set the primary key auto-increment */
-            ALTER TABLE AuditEvents MODIFY COLUMN AuditID INT AUTO_INCREMENT;
         ");
     }
+    
+    #endregion Provider's Methods
 }
