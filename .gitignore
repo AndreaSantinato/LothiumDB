@@ -1,5 +1,5 @@
 ﻿################################################################################
-# Il file gitignore è stato creato automaticamente da Microsoft(R) Visual Studio.
+# Il file gitignore è stato creato automaticamente da Microsoft(R) Visual Studio.
 ################################################################################
 
 /.vs
@@ -14,3 +14,4 @@ LothiumDB/.DS_Store
 .idea/.idea.LothiumDB/.idea/encodings.xml
 .idea/.idea.LothiumDB/.idea/indexLayout.xml
 .idea/.idea.LothiumDB/.idea/vcs.xml
+/LothiumDB.sln.DotSettings
