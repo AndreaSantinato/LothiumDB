@@ -1,14 +1,12 @@
-﻿// Custom Class
-using LothiumDB;
+﻿using LothiumDB;
 using LothiumDB.Configurations;
-using LothiumDB.Data.Providers;
-using LothiumDB.Extensions;
-using LothiumDB.Tester.TestModels;
+using LothiumDB.DatabaseProviders;
+using LothiumDB.Tests.TestModels;
 
 Console.WriteLine("Start Testing Console Project");
 
 // Generate a new db configuration and build it //
-var config = new DatabaseContextConfiguration
+var config = new DatabaseConfiguration
 {
     Provider = new MsSqlServerProvider(
         dataSource: "192.168.1.124",
@@ -22,7 +20,7 @@ var config = new DatabaseContextConfiguration
     QueryTimeOut = 30,
     AuditMode = false
 };
-var db = new DatabaseContext(config);
+var db = new Database(config);
 var sql = new SqlBuilder();
 
 // Execute test examples //
@@ -33,27 +31,27 @@ sql.DeleteTable("TabellaDiTest");
 db.Execute(sql);
 
 // Populate the table with six new elements
-db.Insert<TabellaDiTest>(
-    new List<TabellaDiTest>()
+db.Insert<TestTable>(
+    new List<TestTable>()
     {
-        new TabellaDiTest() { PropertyNome = "Prop1", PropertyDescrizione = "Property 1" },
-        new TabellaDiTest() { PropertyNome = "Prop2", PropertyDescrizione = "Property 2" },
-        new TabellaDiTest() { PropertyNome = "Prop3", PropertyDescrizione = "Property 3" },
-        new TabellaDiTest() { PropertyNome = "Prop4", PropertyDescrizione = "Property 4" },
-        new TabellaDiTest() { PropertyNome = "Prop5", PropertyDescrizione = "Property 5" },
-        new TabellaDiTest() { PropertyNome = "Prop6", PropertyDescrizione = "Property 6" }
+        new TestTable() { PropertyName = "Prop1", PropertyDescription = "Property 1" },
+        new TestTable() { PropertyName = "Prop2", PropertyDescription = "Property 2" },
+        new TestTable() { PropertyName = "Prop3", PropertyDescription = "Property 3" },
+        new TestTable() { PropertyName = "Prop4", PropertyDescription = "Property 4" },
+        new TestTable() { PropertyName = "Prop5", PropertyDescription = "Property 5" },
+        new TestTable() { PropertyName = "Prop6", PropertyDescription = "Property 6" }
     }
 );
 
 // Retrieve the elements in the form of an IEnumerable collections
 sql.Clear();
 sql.Select().From("TabellaDiTest");
-var res1 = db.Query<TabellaDiTest>(sql);
-var res2 = db.FindAll<TabellaDiTest>(sql);
+var res1 = db.Query<TestTable>(sql);
+var res2 = db.FindAll<TestTable>(sql);
 
 // Retrieve the elements in the form of a list
 sql.Where("Nome = @0", "Prop4");
-var res3 = db.FindSingle<TabellaDiTest>(sql);
+var res3 = db.FindSingle<TestTable>(sql);
 
 // Insert/Update/Delete
 try
@@ -61,19 +59,19 @@ try
     db.BeginTransaction();
 
     // Create a new element in the database
-    var prop7 = new TabellaDiTest()
+    var prop7 = new TestTable()
     {
-        PropertyNome = "Prop7",
-        PropertyDescrizione = "Property 7"
+        PropertyName = "Prop7",
+        PropertyDescription = "Property 7"
     };
-    db.Save<TabellaDiTest>(prop7);
+    db.Save<TestTable>(prop7);
     
     // Update the previously created element in the database
-    prop7.PropertyDescrizione = "Updated Description Of Property 7";
-    db.Save<TabellaDiTest>(prop7);
+    prop7.PropertyDescription = "Updated Description Of Property 7";
+    db.Save<TestTable>(prop7);
     
     // Delete the previously created and updated element in the database
-    db.Delete<TabellaDiTest>(prop7);
+    db.Delete<TestTable>(prop7);
     
     db.CommitTransaction();
 }

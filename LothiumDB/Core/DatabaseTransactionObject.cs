@@ -1,7 +1,5 @@
-﻿// System Class
-using System.Data;
-// Custom Class
-using LothiumDB.Interfaces;
+﻿using System.Data;
+using LothiumDB.Core.Interfaces;
 
 namespace LothiumDB.Core;
 
