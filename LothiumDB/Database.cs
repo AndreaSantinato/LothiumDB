@@ -1,10 +1,12 @@
-﻿using System.Data;
-using System.Diagnostics;
+﻿using System;
+using System.Linq;
+using System.Data;
 using LothiumDB.Core;
-using LothiumDB.Configurations;
 using LothiumDB.Core.PocoDataInfo;
 using LothiumDB.Core.Interfaces;
 using LothiumDB.Linq;
+using LothiumDB.Tools;
+using LothiumDB.Exceptions;
 
 // Namespace
 namespace LothiumDB;
@@ -15,12 +17,19 @@ namespace LothiumDB;
 /// </summary>
 public class Database : IDatabase
 {
+    // Private ReadOnly Variables
     private readonly DatabaseConfiguration _dbConfiguration;
     private readonly IDbConnection? _dbConnection;
+
+    // Private Variables
     private DatabaseTransactionObject? _dbTransaction;
     private bool _auditExec = false;
     private bool _auditTableChecked = false;
-    
+
+    // Private Constant Variables
+    private const int QUERY_TIMEOUT_VALUE = 30;
+    private const bool AUDIT_DEFAULT_VALUE = false;
+
     #region Properties
 
     /// <summary>
@@ -68,6 +77,13 @@ public class Database : IDatabase
 
     #region Context Initialization
 
+    protected virtual void OnErrorOccured(Exception exception)
+    {
+        //
+        // ToDo: Define the base actions
+        //
+    }
+
     /// <summary>
     /// This overridable method is executed after a core operation's error
     /// If the audit mode is enable it will track the error inside the dedicated database's table
@@ -91,7 +107,7 @@ public class Database : IDatabase
             if (_dbTransaction is not null) return;
 
             // Validate the current connection object
-            DatabaseExceptionHelper.ValidateDatabaseContextConnection(_dbConnection);
+            DatabaseException.ThrowIfConnectionIsNull(_dbConnection);
 
             // Open a new connection
             _dbConnection.Open();
@@ -138,8 +154,8 @@ public class Database : IDatabase
         try
         {
             // Check if the connection and the configuration object is valid
-            DatabaseExceptionHelper.ValidateDatabaseContextConnection(_dbConnection);
-            DatabaseExceptionHelper.ValidateDatabaseContextConfiguration(_dbConfiguration);
+            DatabaseException.ThrowIfConnectionIsNull(_dbConnection);
+            DatabaseConfigurationException.ThrowIfConfigurationIsNotValid(_dbConfiguration);
 
             // Create a new transaction and start it
             _dbTransaction = new DatabaseTransactionObject(_dbConnection);
@@ -215,7 +231,7 @@ public class Database : IDatabase
 
         // Create the new command
         IDbCommand? command = null;
-        
+
         try
         {
             command = (_dbTransaction is null)
@@ -235,7 +251,7 @@ public class Database : IDatabase
                     case CommandType.Text:
                         DatabaseHelper.AddParamsToDatabaseCommand(
                             _dbConfiguration.Provider,
-                            ref command, 
+                            ref command,
                             new SqlBuilder(sql, args)
                         );
                         break;
@@ -271,16 +287,30 @@ public class Database : IDatabase
     }
 
     /// <summary>
-    /// Create a new instance of the 'Database' class
+    /// Create a new Database instance object from a specific Provider configuration
     /// </summary>
-    /// <param name="configuration"></param>
-    public Database(DatabaseConfiguration configuration)
+    /// <param name="provider">Contains the database instance's provider</param>
+    /// <param name="audit">Indicates if the audit mode is enable</param>
+    public Database(IProvider provider, bool audit = false) : this(provider, QUERY_TIMEOUT_VALUE, audit) { }
+
+    /// <summary>
+    /// Create a new Database instance object from a specific Provider configuration
+    /// </summary>
+    /// <param name="provider">Contains the database instance's provider</param>
+    /// <param name="operationTimeOut">Indicates the query timeout values</param>
+    /// <param name="audit">Indicates if the audit mode is enable</param>
+    public Database(IProvider provider, int operationTimeOut = QUERY_TIMEOUT_VALUE, bool audit = AUDIT_DEFAULT_VALUE)
     {
         // Set the configuration object
-        _dbConfiguration = configuration;
+        _dbConfiguration = new DatabaseConfiguration()
+        {
+            Provider = provider,
+            QueryTimeOut = operationTimeOut,
+            AuditMode = audit
+        };
 
         // Validate the current loaded configuration
-        DatabaseExceptionHelper.ValidateDatabaseContextConfiguration(_dbConfiguration);
+        DatabaseConfigurationException.ThrowIfConfigurationIsNotValid(_dbConfiguration);
 
         // Set the connection with the configuration's values
         _dbConnection = _dbConfiguration.Provider!.CreateConnection();
@@ -310,17 +340,14 @@ public class Database : IDatabase
     /// <returns>A value based of the object type</returns>
     public object? Scalar<T>(string sql, object[] args)
     {
-        // If the query is empty it will return a null result
-        if (string.IsNullOrEmpty(sql)) return null;
-        
-        var sqlBuilder = new SqlBuilder(sql, args); 
-        
-        LastSql = sqlBuilder.ToFormatQuery();
-
-        // Execute the query
         object? result = null;
+
         try
         {
+            SqlBuilderException.ThrowIfSqlNullOrEmpty(sql, args);
+
+            LastSql = new SqlBuilder(sql, args).ToFormatQuery();
+
             OpenConnection();
 
             var cmd = CreateCommand(CommandType.Text, sql, args);
@@ -333,6 +360,7 @@ public class Database : IDatabase
         }
         catch (Exception ex)
         {
+            OnErrorOccured(ex);
             LastError = ex;
             result = default;
         }
@@ -366,17 +394,14 @@ public class Database : IDatabase
     /// <returns>An int value that count all the affected table rows</returns>
     public int Execute(string sql, params object[] args)
     {
-        // If the query is empty it will return a default value
-        if (string.IsNullOrEmpty(sql)) return -1;
-
-        var sqlBuilder = new SqlBuilder(sql, args);
-
-        LastSql = sqlBuilder.ToFormatQuery();
-
-        // Execute the query
         int affectedRowOnCommand = 0;
+
         try
         {
+            SqlBuilderException.ThrowIfSqlNullOrEmpty(sql, args);
+
+            LastSql = new SqlBuilder(sql, args).ToFormatQuery();
+
             OpenConnection();
 
             var cmd = CreateCommand(CommandType.Text, sql, args);
@@ -389,7 +414,7 @@ public class Database : IDatabase
         }
         catch (Exception ex)
         {
-            // Add to info of the last executed command after an error
+            OnErrorOccured(ex);
             LastError = ex;
             affectedRowOnCommand = -1;
         }
@@ -403,7 +428,7 @@ public class Database : IDatabase
 
         return affectedRowOnCommand;
     }
-    
+
     /// <summary>
     /// Invoke the DB NonQuery command in the Database Instance and return the number of completed operations
     /// </summary>
@@ -423,22 +448,20 @@ public class Database : IDatabase
     /// <returns>A value based of the object type</returns>
     public IEnumerable<T>? Query<T>(string sql, params object[] args)
     {
-        // If the query is empty it will return an empty list of the passed type
-        if (string.IsNullOrEmpty(sql)) return null;
-        
-        var type = typeof(T);
-        var sqlBuilder = new SqlBuilder(sql, args);
-        
-        LastSql = sqlBuilder.ToFormatQuery();
-
-        // Execute the query
         var result = new List<T>();
+
         try
         {
+            SqlBuilderException.ThrowIfSqlNullOrEmpty(sql, args);
+
+            LastSql = new SqlBuilder(sql, args).ToFormatQuery();
+
             OpenConnection();
 
             // Check if exist a lothium object, if not will instance a new one
-            var pocoObject = new PocoObject<T>();
+            var type = typeof(T);
+            var mapper = new AutoMapper(type);
+            var props = AutoMapper.GetMappedProperties<T>();
 
             var cmd = CreateCommand(CommandType.Text, sql, args);
             if (cmd is null) throw new Exception(nameof(cmd));
@@ -449,43 +472,34 @@ public class Database : IDatabase
                 while (cmdReader.Read())
                 {
                     if (cmdReader.FieldCount <= 0) continue;
-                    object? obj = Activator.CreateInstance(typeof(T));
 
-                    foreach (var prop in pocoObject.GetProperties(type))
+                    var item = Activator.CreateInstance(type);
+
+                    ArgumentNullException.ThrowIfNull(mapper.TableData, nameof(mapper.TableData));
+                    ArgumentNullException.ThrowIfNull(mapper.ColumnsData, nameof(mapper.ColumnsData));
+
+                    foreach (var prop in props)
                     {
-                        var pName = string.Empty;
-                        if (pocoObject.ColumnDataInfo is not null)
-                        {
-                            foreach
-                            (
-                                var info in pocoObject
-                                    .ColumnDataInfo
-                                    .Where(c => c.PocoObjectPropertyName == prop.Name)
-                            )
-                            {
-                                pName = info.Name;
-                                break;
-                            }
-                        }
+                        var colInfo = Array.Find(mapper.ColumnsData.ToArray(), col => col.PocoObjectPropertyName == prop.Name);
+                        ArgumentNullException.ThrowIfNull(colInfo, nameof(colInfo));
 
-                        var value = string.IsNullOrEmpty(pName) 
-                            ? null 
-                            : cmdReader[pName];
-                        
-                        Debug.Assert(value != null, nameof(value) + " != null");
-                        
-                        if (value.Equals(DBNull.Value)) value = null;
-                        if (value is not null) prop.SetValue(obj, value, null);
+                        var value = (string.IsNullOrEmpty(colInfo.Name))
+                            ? cmdReader[colInfo.PocoObjectPropertyName]
+                            : cmdReader[colInfo.Name];
+
+                        value = DatabaseHelper.VerifyDBNullValue(colInfo, value);
+
+                        prop.SetValue(item, value, null);
+                        continue;
                     }
 
-                    Debug.Assert(obj != null, $"{nameof(obj)} != null");
-                    
-                    result.Add((T)obj);
+                    if (item is not null) result.Add((T)item);
                 }
             }
         }
         catch (Exception ex)
         {
+            OnErrorOccured(ex);
             LastError = ex;
             result = null;
         }
@@ -507,17 +521,17 @@ public class Database : IDatabase
     /// <param name="sql">Contains the SQL object</param>
     /// <returns>A value based of the object type</returns>
     public IEnumerable<T> Query<T>(SqlBuilder sql) => Query<T>(sql.Query, sql.Params);
-    
+
     #endregion
 
     #region FindAll Command
-    
+
     /// <summary>
     /// Select all the elements inside a table without specify the Sql query
     /// </summary>
     /// <returns>A value based of the object type</returns>
-    public List<T> FindAll<T>()
-        => FindAll<T>(AutoQueryMapper.AutoSelectClause<T>());
+    public List<T>? FindAll<T>()
+        => FindAll<T>(AutoMapper.AutoSelectClause<T>());
 
     /// <summary>
     /// Select all the elements inside a table with a specify Sql query
@@ -525,11 +539,11 @@ public class Database : IDatabase
     /// <typeparam name="T">Contains the type for the returned object</typeparam>
     /// <param name="sql">Contains the SQL object</param>
     /// <returns>A value based of the object type</returns>
-    public List<T> FindAll<T>(SqlBuilder sql)
+    public List<T>? FindAll<T>(SqlBuilder sql)
     {
         var result = Query<T>(sql);
-        return (result is null) 
-            ? Enumerable.Empty<T>().ToList()
+        return (result is null)
+            ? null
             : result.ToList();
     }
 
@@ -540,9 +554,9 @@ public class Database : IDatabase
     /// <param name="sql">Contains the query command to be executed</param>
     /// <param name="args">Contains all the extra arguments of the query</param>
     /// <returns>A value based of the object type</returns>
-    public List<T> FindAll<T>(string sql, params object[] args)
+    public List<T>? FindAll<T>(string sql, params object[] args)
         => FindAll<T>(new SqlBuilder(sql, args));
-    
+
     #endregion
     #region FindSingle Command
 
@@ -551,8 +565,13 @@ public class Database : IDatabase
     /// </summary>
     /// <param name="sql">Contains the SQL object</param>
     /// <returns>A value based of the object type</returns>
-    public T FindSingle<T>(SqlBuilder sql)
-        => Query<T>(sql).ToList().FirstElement()!;
+    public T? FindSingle<T>(SqlBuilder sql)
+    {
+        var result = Query<T>(sql).ToList();
+        return (result is null)
+            ? default(T) 
+            : result.FirstElement();
+    }
 
     /// <summary>
     /// Select a single specific element inside a table
@@ -562,12 +581,12 @@ public class Database : IDatabase
     /// <param name="args">Contains all the extra arguments of the query</param>
     /// <returns>A value based of the object type</returns>
     /// <returns></returns>
-    public T FindSingle<T>(string sql, params object[] args)
+    public T? FindSingle<T>(string sql, params object[] args)
         => FindSingle<T>(new SqlBuilder(sql, args));
-    
+
     #endregion
     #region FetchPage
-    
+
     /// <summary>
     /// Generate a Paging List from a PageObject
     /// </summary>
@@ -576,10 +595,12 @@ public class Database : IDatabase
     /// <returns>A value based of the object type</returns>
     public List<T> FetchPage<T>(PageObject<T> page)
     {
-        var sqlAutoSelect = AutoQueryMapper
-            .AutoSelectClause<T>()
-            .Where("WHERE 1=1");
-        return FetchPage<T>(page, sqlAutoSelect);
+        return FetchPage<T>(
+            page, 
+            AutoMapper
+                .AutoSelectClause<T>()
+                .Where("WHERE 1=1")
+        );
     }
 
     /// <summary>
@@ -620,7 +641,7 @@ public class Database : IDatabase
     private void NewAuditEvent(DateTime executedDateTime, string? sqlQuery, Exception? dbError)
     {
         SqlBuilder? sql;
-        
+
         // Check the if the required variables are correctly sets
         if (!_dbConfiguration.AuditMode) return;
 
@@ -664,7 +685,7 @@ public class Database : IDatabase
     }
 
     #endregion
-    
+
     #region Insert, Update, Save, Delete, Exist Methods
 
     /// <summary>
@@ -676,7 +697,7 @@ public class Database : IDatabase
     /// <typeparam name="T">Contains the type of the objects to be insert inside the database</typeparam>
     /// <returns>Return an object that contains the number of affected rows</returns>
     public object Insert<T>(object obj)
-        => Execute(AutoQueryMapper.AutoInsertClause<T>(new PocoObject<T>(obj)));
+        => Execute(AutoMapper.AutoInsertClause<T>(obj));
 
     /// <summary>
     ///     <para>
@@ -706,7 +727,7 @@ public class Database : IDatabase
     /// <typeparam name="T">Contains the type of the objects to be insert inside the database</typeparam>
     /// <returns>Return an object that contains the number of affected rows</returns>
     public object Update<T>(object obj)
-        => Execute(AutoQueryMapper.AutoUpdateClause(new PocoObject<T>(obj)));
+        => Execute(AutoMapper.AutoUpdateClause<T>(obj));
 
     /// <summary>
     ///     <para>
@@ -735,7 +756,7 @@ public class Database : IDatabase
     /// <param name="obj">Contains the object with the db table's mapping</param>
     /// <returns>Return an object that contains the number of affected rows</returns>
     public object Delete<T>(object obj)
-        => Execute(AutoQueryMapper.AutoDeleteClause(new PocoObject<T>(obj)));
+        => Execute(AutoMapper.AutoDeleteClause<T>(obj));
 
     /// <summary>
     ///     <para>
@@ -797,7 +818,7 @@ public class Database : IDatabase
     /// <param name="obj">Contains the object with the db table's mapping</param>
     /// <returns></returns>
     public bool Exist<T>(object obj)
-        => Exist(AutoQueryMapper.AutoExistClause<T>(new PocoObject<T>(obj)));
+        => Exist(AutoMapper.AutoExistClause<T>(obj));
 
     #endregion
 }

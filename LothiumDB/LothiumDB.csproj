@@ -44,7 +44,6 @@
     <Compile Remove="Extensions\ColumnInfo.cs" />
     <Compile Remove="Extensions\PrimaryKeyInfo.cs" />
     <Compile Remove="Extensions\TableInfo.cs" />
-    <Compile Remove="Providers\DbProvider.cs" />
     <Compile Remove="Enumerations\ProviderTypes.cs" />
     <Compile Remove="Enumerations\SqlCommandHistoryTypes.cs" />
     <Compile Remove="Enumerations\SqlTypes.cs" />
@@ -52,9 +51,6 @@
     <Compile Remove="Utility\DatabaseCommands.cs" />
     <Compile Remove="Utility\LothiumDataInfo.cs" />
     <Compile Remove="Utility\SqlLastCmdHelper.cs" />
-    <Compile Remove="Configurations\AuditConfigurationExtensions.cs" />
-    <Compile Remove="Configurations\DatabaseConfigurationExtensions.cs" />
-    <Compile Remove="Configurations\ProviderConfigurationExtensions.cs" />
     <Compile Remove="Core\DatabaseConnectionObject.cs" />
     <Compile Remove="Core\IDatabaseConnectionObject.cs" />
     <Compile Remove="Interfaces\IDatabaseConnectionObject.cs" />

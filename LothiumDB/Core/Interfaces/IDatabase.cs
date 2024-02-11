@@ -8,13 +8,13 @@ internal interface IDatabase : IDatabaseCore
     /// Select all the elements inside a table without specify the Sql query
     /// </summary>
     /// <returns>A value based of the object type</returns>
-    public List<T> FindAll<T>();
+    public List<T>? FindAll<T>();
 
     /// <summary>
     /// Select all the elements inside a table using a specific Sql query
     /// </summary>
     /// <returns>A value based of the object type</returns>
-    public List<T> FindAll<T>(SqlBuilder sql);
+    public List<T>? FindAll<T>(SqlBuilder sql);
 
     /// <summary>
     /// Select a single specific element inside a table
@@ -23,7 +23,7 @@ internal interface IDatabase : IDatabaseCore
     /// <param name="sql">Contains the query command to be executed</param>
     /// <returns>A value based of the object type</returns>
     /// <returns></returns>
-    public T FindSingle<T>(SqlBuilder sql);
+    public T? FindSingle<T>(SqlBuilder sql);
 
     /// <summary>
     /// Search inside the database's if a record exist
