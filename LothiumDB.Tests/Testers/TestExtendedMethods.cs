@@ -75,7 +75,7 @@ public static class TestExtendedMethods
         sql.Clear();
         sql.Select()
            .From("TestTable")
-           .Where("Nome = @0", "Prop4");
+           .Where("PropertyName = @0", "Prop4");
         var res3 = database.FindSingle<TestTable>(sql);
 
         sql.Dispose();
