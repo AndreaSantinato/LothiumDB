@@ -2,7 +2,6 @@
 using System.Linq;
 using System.Data;
 using LothiumDB.Core;
-using LothiumDB.Core.PocoDataInfo;
 using LothiumDB.Core.Interfaces;
 using LothiumDB.Linq;
 using LothiumDB.Tools;
