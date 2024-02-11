@@ -1,4 +1,6 @@
-﻿namespace LothiumDB.Core.Interfaces;
+﻿using LothiumDB.Tools;
+
+namespace LothiumDB.Core.Interfaces;
 
 internal interface IDatabase : IDatabaseCore
 {

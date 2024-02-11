@@ -1,5 +1,6 @@
 using System.Data;
 using LothiumDB.Core.Enumerations;
+using LothiumDB.Tools;
 
 namespace LothiumDB.Core.Interfaces;
 
