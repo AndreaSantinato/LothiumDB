@@ -147,11 +147,13 @@ public sealed class SqlBuilder : IDisposable
     /// <returns>An Sql Objects With the Appended Value to the final Query result</returns>
     public SqlBuilder Select(params object[] columns)
     {
-        Append(
-            !columns.Any()
-                ? "SELECT *"
-                : $"SELECT {string.Join(", ", columns.Select(x => x.ToString()).ToArray())}"
-            );
+        if (!columns.Any())
+        {
+            Append("SELECT *");
+            return this;
+        }
+
+        Append($"SELECT {string.Join(",", columns)}");
         return this;
     }
 
