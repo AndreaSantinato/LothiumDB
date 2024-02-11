@@ -1,6 +1,6 @@
 using LothiumDB.Core.Enumerations;
 
-namespace LothiumDB.DatabaseProviders;
+namespace LothiumDB.Providers;
 
 public class BaseProvider
 {

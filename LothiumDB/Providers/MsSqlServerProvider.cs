@@ -1,45 +1,56 @@
 ﻿using System.Data;
+using System.Data.SqlClient;
 using LothiumDB.Core.Enumerations;
 using LothiumDB.Core.Interfaces;
-using Npgsql;
+using LothiumDB.Tools;
 
-// Namespace
-namespace LothiumDB.DatabaseProviders;
+// Providers Namespace
+namespace LothiumDB.Providers;
 
 /// <summary>
-/// Defines A Provider For A PostgreSQL Database Instance
+/// Defines A Provider For A Microsoft SQL Server's Database Instance
 /// </summary>
-public sealed class PostgreSqlProvider : BaseProvider, IProvider
+public class MsSqlServerProvider : BaseProvider, IProvider
 {
     #region Provider's Constructors
     
     /// <summary>
-    /// Create a new instance of the PostgreSql database provider
+    /// Create a new instance of the MsSqlServer database provider
     /// </summary>
     /// <param name="connectionString">Contains the specific connection string</param>
-    public PostgreSqlProvider(string connectionString) 
-        : base(ProviderTypesEnum.PostgreSql, connectionString, "@") { }
-    
+    public MsSqlServerProvider(string connectionString) 
+        : base(ProviderTypesEnum.MicrosoftSqlServer, connectionString, "@") { }
+
     /// <summary>
     /// Create a new instance of the MsSqlServer database provider
     /// </summary>
-    /// <param name="host">Contains the database instance</param>
-    /// <param name="username">Contains the user</param>
+    /// <param name="dataSource">Contains the data source</param>
+    /// <param name="userId">Contains the user</param>
     /// <param name="password">Contains the password</param>
-    /// <param name="database">Contains the database's name</param>
-    public PostgreSqlProvider(
-        string host,
-        string username,
+    /// <param name="initialCatalog">Contains the database's name</param>
+    /// <param name="currentLanguage">Contains the chosen language</param>
+    /// <param name="encrypt">Indicates if the connection must by encrypted</param>
+    /// <param name="trustServerCertificate">Indicates if the database instance need a trusted certificate</param>
+    public MsSqlServerProvider(
+        string dataSource,
+        string userId,
         string password,
-        string database
+        string initialCatalog,
+        string currentLanguage,
+        bool encrypt,
+        bool trustServerCertificate
     ) : this(
-        new NpgsqlConnectionStringBuilder()
+        new SqlConnectionStringBuilder()
         {
-            Timeout = 30,
-            Host = host,
-            Username = username,
+            ConnectRetryCount = 2,
+            ConnectTimeout = 30,
+            DataSource = dataSource,
+            UserID = userId,
             Password = password,
-            Database = database
+            InitialCatalog = initialCatalog,
+            CurrentLanguage = currentLanguage,
+            Encrypt = encrypt,
+            TrustServerCertificate = trustServerCertificate
         }.ConnectionString
     ) { }
 
@@ -81,7 +92,7 @@ public sealed class PostgreSqlProvider : BaseProvider, IProvider
         // 3) Return the final result
         
         ArgumentNullException.ThrowIfNull(base.ConnectionString);
-        return new NpgsqlConnection(base.ConnectionString);
+        return new SqlConnection(base.ConnectionString);
     }
 
     /// <summary>
@@ -94,8 +105,8 @@ public sealed class PostgreSqlProvider : BaseProvider, IProvider
     public SqlBuilder BuildPageQuery<T>(PageObject<T> pageObj, SqlBuilder sql)
     {
         return sql
-            .Append($"LIMIT {pageObj.ItemsForEachPage}")
-            .Append($"OFFSET {pageObj.ItemsToBeSkipped}");
+            .Append($"OFFSET {pageObj.ItemsForEachPage} ROWS")
+            .Append($"FETCH NEXT {pageObj.ItemsToBeSkipped} ROWS ONLY");
     }
 
     /// <summary>
@@ -107,14 +118,13 @@ public sealed class PostgreSqlProvider : BaseProvider, IProvider
         return new SqlBuilder(@"
             /* Check if audit table exists inside the database instance */
 
-            SELECT EXISTS (
-                SELECT FROM pg_tables
-                WHERE  schemaname = @0
-                AND    tablename  = @1
-            );
-        ", new NpgsqlConnectionStringBuilder(this.ConnectionString).Database!, "AuditEvents");
+            SELECT  COUNT(*)
+            FROM    INFORMATION_SCHEMA.TABLES
+            WHERE   TABLE_SCHEMA = @0
+                    AND TABLE_NAME = @1
+        ", "dbo", "AuditEvents");
     }
-    
+
     /// <summary>
     /// Generate a query for the 'AuditTable' creation script
     /// </summary>
@@ -127,12 +137,13 @@ public sealed class PostgreSqlProvider : BaseProvider, IProvider
                 Script Description: Create the 'AuditEvents' table inside the database instance 
             */
 
-            CREATE TABLE employees (
-                query_execution_date DATE NOT NULL,
-                query_text VARCHAR(MAX) NULL,
-                query_error BOOLEAN NOT NULL,
-                query_error_message VARCHAR(MAX) NULL
-            );
+            CREATE TABLE [dbo].[AuditEvents]
+            (
+	            [query_execution_date] [date] NOT NULL,
+	            [query_text] [nvarchar](max) NULL,
+                [query_error] [bit] NOT NULL,
+                [query_error_message] [nvarchar](max) NULL
+            )
         ");
     }
     

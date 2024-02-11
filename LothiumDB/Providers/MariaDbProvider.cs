@@ -1,6 +1,6 @@
 ﻿using LothiumDB.Core.Enumerations;
 
-namespace LothiumDB.DatabaseProviders;
+namespace LothiumDB.Providers;
 
 /// <summary>
 /// Defines A Provider For A MariaDB's Database Instance

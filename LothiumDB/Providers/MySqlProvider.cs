@@ -1,10 +1,11 @@
 ﻿using System.Data;
 using LothiumDB.Core.Enumerations;
 using LothiumDB.Core.Interfaces;
+using LothiumDB.Tools;
 using MySql.Data.MySqlClient;
 
 // Providers Namespace
-namespace LothiumDB.DatabaseProviders;
+namespace LothiumDB.Providers;
 
 /// <summary>
 /// Defines A Provider For A MySql Database Instance
