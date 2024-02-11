@@ -23,8 +23,21 @@ internal class PocoTableData
     /// <summary>
     /// Contains the combined value of table's schema and table's name
     /// </summary>
-    public string TableFullName =>
-        (!string.IsNullOrEmpty(this.TableSchema))
-            ? $"{this.TableSchema}.{this.TableName}"
-            : $"{this.TableName}";
+    public string TableFullName
+    {
+        get 
+        {
+            var tbSchema = this.TableSchema;
+            
+            var tbName = (string.IsNullOrEmpty(this.TableName))
+                ? this.PocoObjectClassName
+                : this.TableName;
+
+            var tbFullName = (!string.IsNullOrEmpty(this.TableSchema))
+                ? $"{this.TableSchema}.{this.TableName}"
+                : $"{this.TableName}";
+
+            return tbFullName;
+        }
+    } 
 }
