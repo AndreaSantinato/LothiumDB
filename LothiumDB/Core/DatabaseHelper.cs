@@ -1,6 +1,8 @@
 ﻿using System.Data;
 using System.Text.RegularExpressions;
 using LothiumDB.Core.Interfaces;
+using LothiumDB.Core.PocoDataInfo;
+using LothiumDB.Tools;
 
 namespace LothiumDB.Core;
 
@@ -23,6 +25,29 @@ internal static class DatabaseHelper
             RegexOptions.Compiled
         );
         return string.IsNullOrEmpty(sql.Query) ? null : regex.Matches(sql.Query);
+    }
+
+    /// <summary>
+    /// Verify the nullable state of the column and perform the appropriete checks
+    /// </summary>
+    /// <param name="value"></param>
+    /// <param name="columnData"></param>
+    public static object? VerifyDBNullValue(PocoColumnData columnData, object? value)
+    {
+        if (value != DBNull.Value) return value;
+
+        if (!columnData.Nullable)
+        {
+            ArgumentNullException.ThrowIfNull(columnData.DefaultValue, nameof(columnData.DefaultValue));
+
+            var colName = (string.IsNullOrEmpty(columnData.Name)) 
+                ? columnData.PocoObjectPropertyName 
+                : columnData.Name;
+
+            throw new Exception($"The column {colName} don't allow nullable values");
+        }
+
+        return null;
     }
 
     /// <summary>
