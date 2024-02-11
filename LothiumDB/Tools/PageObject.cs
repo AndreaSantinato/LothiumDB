@@ -1,4 +1,4 @@
-﻿namespace LothiumDB;
+﻿namespace LothiumDB.Tools;
 
 /// <summary>
 /// Custom object used to create a Paging helper

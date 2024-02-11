@@ -1,24 +1,24 @@
 ﻿// System Class
 using System.Text;
 
-namespace LothiumDB;
+namespace LothiumDB.Tools;
 
 public sealed class SqlBuilder : IDisposable
 {
     #region Class Property
-    
+
     /// <summary>
     /// Contains the generated query
     /// </summary>
     public string Query { get; private set; }
-    
+
     /// <summary>
     /// Contains the stored parameters
     /// </summary>
     public object[] Params { get; private set; }
 
     #endregion
-    
+
     #region Class Constructor & Destructor Methods
 
     /// <summary>
@@ -47,7 +47,7 @@ public sealed class SqlBuilder : IDisposable
     #endregion
 
     #region Core Methods
-    
+
     /// <summary>
     /// Update all the arguments inside the query builder
     /// </summary>
@@ -55,7 +55,7 @@ public sealed class SqlBuilder : IDisposable
     private void UpdateParameters(params object[] newArgs)
     {
         if (!newArgs.Any()) return;
-        
+
         var unifiedArgsArray = new object[Params.Length + newArgs.Length];
         Array.Copy(Params, unifiedArgsArray, Params.Length);
         Array.Copy(newArgs, 0, unifiedArgsArray, Params.Length, newArgs.Length);
@@ -82,7 +82,7 @@ public sealed class SqlBuilder : IDisposable
         {
             if (string.IsNullOrEmpty(Query)) return string.Empty;
             if (!Params.Any()) return $"{Query}\n\n/// No Params ///";
-            
+
             // Format the parameters for the output result
             var formattedParameters = string.Empty;
             var parIndex = 0;
@@ -95,14 +95,14 @@ public sealed class SqlBuilder : IDisposable
             });
 
             // Return the final formatted result
-            return $"{Query}\n\n/// Query Params ///\n{formattedParameters}";   
+            return $"{Query}\n\n/// Query Params ///\n{formattedParameters}";
         }
         catch (Exception ex)
         {
             return string.Empty;
         }
     }
-    
+
     #endregion
 
     #region Append Methods
@@ -128,10 +128,10 @@ public sealed class SqlBuilder : IDisposable
         }
         sb.Append(value);
         Query = sb.ToString();
-        
+
         // Update all the actual passed argument for the query
         UpdateParameters(args);
-        
+
         // Return the current object instance
         return this;
     }
@@ -139,7 +139,7 @@ public sealed class SqlBuilder : IDisposable
     #endregion
 
     #region Query Methods
-    
+
     /// <summary>
     /// Append a Select Clause to the final Query
     /// </summary>
@@ -148,13 +148,13 @@ public sealed class SqlBuilder : IDisposable
     public SqlBuilder Select(params object[] columns)
     {
         Append(
-            !columns.Any() 
-                ? "SELECT *" 
+            !columns.Any()
+                ? "SELECT *"
                 : $"SELECT {string.Join(", ", columns.Select(x => x.ToString()).ToArray())}"
             );
         return this;
     }
-    
+
     /// <summary>
     /// Append a Select Clause to the final Query
     /// </summary>
@@ -164,8 +164,8 @@ public sealed class SqlBuilder : IDisposable
     public SqlBuilder Select(int topElements, params object[] columns)
     {
         Append(
-            !columns.Any() 
-                ? $"SELECT TOP {topElements} *" 
+            !columns.Any()
+                ? $"SELECT TOP {topElements} *"
                 : $"SELECT TOP {topElements} {string.Join(", ", columns.Select(x => x.ToString()).ToArray())}"
         );
         return this;
@@ -181,7 +181,7 @@ public sealed class SqlBuilder : IDisposable
         Append($"FROM {string.Join(", ", tables.Select(x => x.ToString()).ToArray())}");
         return this;
     }
-    
+
     /// <summary>
     /// Append a From Clause to the final Query
     /// </summary>
@@ -231,7 +231,7 @@ public sealed class SqlBuilder : IDisposable
     #endregion
 
     #region Join Methods
-    
+
     /// <summary>
     /// Append An On Join Clause to the final query
     /// </summary>
@@ -243,7 +243,7 @@ public sealed class SqlBuilder : IDisposable
         Append($"ON {condition}", args);
         return this;
     }
-    
+
     /// <summary>
     /// Append An And Clause to the final query
     /// </summary>
@@ -255,7 +255,7 @@ public sealed class SqlBuilder : IDisposable
         Append($"AND {condition}", args);
         return this;
     }
-    
+
     /// <summary>
     /// Append An Or Clause to the final query
     /// </summary>
@@ -267,7 +267,7 @@ public sealed class SqlBuilder : IDisposable
         Append($"OR {condition}", args);
         return this;
     }
-    
+
     /// <summary>
     /// Append an Inner Join Clause To the final Query
     /// </summary>
@@ -424,7 +424,7 @@ public sealed class SqlBuilder : IDisposable
         Append("DELETE").From(table);
 
         if (whereValues == null || !whereValues.Any()) return this;
-        
+
         var parCount = 0;
         foreach (var item in whereValues)
         {
