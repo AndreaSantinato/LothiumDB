@@ -86,6 +86,23 @@ public sealed class PostgreSqlProvider : BaseProvider, IProvider
     }
 
     /// <summary>
+    /// Create a new command based on the passed property
+    /// </summary>
+    /// <param name="command">Contains the actual command to execute</param>
+    /// <param name="connection">Contains the actual connection</param>
+    /// <param name="transaction">Contains an optional transaction</param>
+    /// <exception cref="ArgumentNullException">Generate an exception if the command is null or empty</exception>
+    /// <returns>A DbComand based on the current provider</returns>
+    public IDbCommand CreateCommand(string command, IDbConnection connection, IDbTransaction? transaction)
+    {
+        ArgumentNullException.ThrowIfNullOrEmpty(command);
+
+        return ((NpgsqlTransaction)transaction! is null)
+            ? new NpgsqlCommand(command, (NpgsqlConnection)connection)
+            : new NpgsqlCommand(command, (NpgsqlConnection)connection, (NpgsqlTransaction)transaction);
+    }
+
+    /// <summary>
     /// Create a query for retrieve data in a paginated result
     /// </summary>
     /// <typeparam name="T">Indicates the type of the database's table</typeparam>

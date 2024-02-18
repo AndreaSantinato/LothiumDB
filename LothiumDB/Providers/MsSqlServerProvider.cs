@@ -77,14 +77,14 @@ public class MsSqlServerProvider : BaseProvider, IProvider
     public string? GetVariablePrefix() => base.VariablePrefix;
 
     #endregion Provider's Property
-    
+
     #region Provider's Methods
-    
+
     /// <summary>
     /// Create a new connection based on specified connection string
     /// </summary>
     /// <returns>A Formatted connection string for the MsSqlServer provider</returns>
-    /// <exception cref="ArgumentNullException">Generate an exception if the connection string is null or empty</exception>
+    /// <exception cref="ArgumentNullException">Generate an exception if the command is null or empty</exception>
     public IDbConnection CreateConnection()
     {
         // 1) Check if the passed/generated connection string is correct before create a new database's connection
@@ -93,6 +93,23 @@ public class MsSqlServerProvider : BaseProvider, IProvider
         
         ArgumentNullException.ThrowIfNull(base.ConnectionString);
         return new SqlConnection(base.ConnectionString);
+    }
+
+    /// <summary>
+    /// Create a new command based on the passed property
+    /// </summary>
+    /// <param name="command">Contains the actual command to execute</param>
+    /// <param name="connection">Contains the actual connection</param>
+    /// <param name="transaction">Contains an optional transaction</param>
+    /// <exception cref="ArgumentNullException">Generate an exception if the connection string is null or empty</exception>
+    /// <returns>A DbComand based on the current provider</returns>
+    public IDbCommand CreateCommand(string command, IDbConnection connection, IDbTransaction? transaction)
+    {
+        ArgumentNullException.ThrowIfNullOrEmpty(command);
+
+        return ((SqlTransaction)transaction! is null) 
+            ? new SqlCommand(command, (SqlConnection)connection)
+            : new SqlCommand(command, (SqlConnection)connection, (SqlTransaction)transaction);
     }
 
     /// <summary>
