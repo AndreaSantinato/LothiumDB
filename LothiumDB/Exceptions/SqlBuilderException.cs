@@ -6,7 +6,7 @@ namespace LothiumDB.Exceptions;
 /// <summary>
 /// Define a SqlBuilder Exception
 /// </summary>
-internal class SqlBuilderException : Exception
+internal class SqlBuilderException : DatabaseException
 {
     #region Constructors
 
@@ -24,11 +24,9 @@ internal class SqlBuilderException : Exception
     /// </summary>
     /// <param name="sqlBuilder">Contains the sql builder to verify</param>
     /// <exception cref="ArgumentNullException"></exception>
-    public static void ThrowIfBuilderIsNullorEmpty([NotNull] SqlBuilder? sqlBuilder)
+    public static void ThrowIfBuilderIsNullOrEmpty([NotNull] SqlBuilder? sqlBuilder)
     {
-        if (sqlBuilder is null)
-            ThrowException("The provided builder is not valid!");
-
+        ThrowIfNull(sqlBuilder, nameof(sqlBuilder));
         ThrowIfSqlNullOrEmpty(sqlBuilder.Query, sqlBuilder.Params);
     }
 
@@ -41,8 +39,7 @@ internal class SqlBuilderException : Exception
     /// <exception cref="ArgumentNullException"></exception>
     public static void ThrowIfSqlNullOrEmpty([NotNull] string? sql, object[]? args)
     {
-        if (string.IsNullOrEmpty(sql)) 
-            ThrowException("The provided sql query is not valid!");
+        ThrowIfNullOrEmpty(sql!, nameof(sql));
 
         if (sql.Contains('@') && (args is null || !args.Any())) 
             ThrowException("The providee sql query have declared variables but no passed parameters!");

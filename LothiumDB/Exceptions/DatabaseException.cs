@@ -1,5 +1,4 @@
-﻿using System.Data;
-using System.Diagnostics.CodeAnalysis;
+﻿using System.Diagnostics.CodeAnalysis;
 
 namespace LothiumDB.Exceptions;
 
@@ -20,17 +19,47 @@ internal class DatabaseException : Exception
     #endregion Constructors
 
     /// <summary>
-    /// Throw an exception if the passed connection is not valid to perform db's operations
+    /// Throw an exception if the passed value is null
     /// </summary>
-    /// <param name="connection">Contains the database context's connection</param>
-    /// <exception cref="ArgumentException"></exception>
-    internal static void ThrowIfConnectionIsNull([NotNull] IDbConnection? connection)
+    /// <param name="value"></param>
+    /// <param name="parameterName"></param>
+    internal static void ThrowIfNull([NotNull] object? value, string parameterName = "")
     {
-        if (connection is null)
-            ThrowException("The connection must be declared and created to perform database operations!");
+        if (value is null)
+            ThrowException(
+                string.IsNullOrEmpty(parameterName)
+                    ? "The passed object is null!"
+                    : $"The object {parameterName} is null!"
+            );
 
-        if (string.IsNullOrEmpty(connection.ConnectionString))
-            ThrowException("The connection string must be specified to perform database operations!");
+    }
+
+    /// <summary>
+    /// Throw an exception if the passed value is empty
+    /// </summary>
+    /// <param name="value"></param>
+    /// <param name="parameterName"></param>
+    internal static void ThrowIfEmpty([NotNull] string value, string parameterName = "")
+    {
+        if (value == string.Empty)
+        {
+            ThrowException(
+                string.IsNullOrEmpty(parameterName)
+                    ? "The passed string is empty!"
+                    : $"The string {parameterName} is empty!"
+            );
+        }
+    }
+
+    /// <summary>
+    /// Throw an exception if the passed value is null or empty
+    /// </summary>
+    /// <param name="value"></param>
+    /// <param name="parameterName"></param>
+    internal static void ThrowIfNullOrEmpty([NotNull] string value, string parameterName = "")
+    {
+        ThrowIfNull(value, nameof(value));
+        ThrowIfEmpty(value, nameof(value));
     }
 
     [DoesNotReturn]
