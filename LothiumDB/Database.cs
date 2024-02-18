@@ -7,7 +7,6 @@ using LothiumDB.Linq;
 using LothiumDB.Tools;
 using LothiumDB.Exceptions;
 
-// Namespace
 namespace LothiumDB;
 
 /// <summary>
@@ -16,16 +15,14 @@ namespace LothiumDB;
 /// </summary>
 public class Database : IDatabase
 {
-    // Private ReadOnly Variables
-    private readonly DatabaseConfiguration _dbConfiguration;
-    private readonly IDbConnection? _dbConnection;
-
-    // Private Variables
-    private DatabaseTransactionObject? _dbTransaction;
+    private IProvider _dbProvider;
+    private IDbConnection _dbConnection;
+    private DatabaseTransaction? _dbTransaction;
+    private int _dbQueryTimeOut = 30;
+    private bool _dbAuditMode = false;
     private bool _auditExec = false;
     private bool _auditTableChecked = false;
-
-    // Private Constant Variables
+    private bool _disposed = false;
     private const int QUERY_TIMEOUT_VALUE = 30;
     private const bool AUDIT_DEFAULT_VALUE = false;
 
@@ -68,11 +65,50 @@ public class Database : IDatabase
     /// </summary>
     public int CommandTimeOut
     {
-        get => _dbConfiguration.QueryTimeOut;
-        set => _dbConfiguration.QueryTimeOut = value;
+        get => _dbQueryTimeOut;
+        set => _dbQueryTimeOut = value;
     }
 
     #endregion
+
+    #region Constructors & Destructors
+
+    /// <summary>
+    /// Create a new Database instance object from a specific Provider configuration
+    /// </summary>
+    /// <param name="provider">Contains the database instance's provider</param>
+    /// <param name="audit">Indicates if the audit mode is enable</param>
+    public Database(IProvider provider, bool audit = false) : this(provider, QUERY_TIMEOUT_VALUE, audit) { }
+
+    /// <summary>
+    /// Create a new Database instance object from a specific Provider configuration
+    /// </summary>
+    /// <param name="provider">Contains the database instance's provider</param>
+    /// <param name="operationTimeOut">Indicates the query timeout values</param>
+    /// <param name="audit">Indicates if the audit mode is enable</param>
+    public Database(IProvider provider, int operationTimeOut = QUERY_TIMEOUT_VALUE, bool audit = AUDIT_DEFAULT_VALUE)
+    {
+        // Set the configuration object
+        _dbProvider = provider;
+        _dbQueryTimeOut = operationTimeOut;
+        _dbAuditMode = audit;
+
+        // Generate the new connection and transaction objects
+        _dbConnection = _dbProvider.CreateConnection();
+        _dbTransaction = new DatabaseTransaction(_dbProvider, _dbConnection);
+
+        // Set the history property to their default values
+        LastError = null;
+        LastSql = string.Empty;
+    }
+
+    /// <summary>
+    /// Dispose the Database Instance Previously Created
+    /// </summary>
+    public void Dispose()
+        => DisposeInstance(true);
+
+    #endregion Constructors & Destructors
 
     #region Context Initialization
 
@@ -94,54 +130,42 @@ public class Database : IDatabase
         if (!_auditExec) NewAuditEvent(DateTime.Now, LastSql!, LastError);
     }
 
+    private void DisposeInstance(bool dispose)
+    {
+        if (_disposed) return;
+
+        if (dispose)
+        {
+            //
+            // ToDo: Defines the resource to deallocate from the memory
+            //
+        }
+
+        GC.SuppressFinalize(this);
+    }
+
+    #endregion Context Initialization
+
+    #region Connection & Transaction
+
     /// <summary>
     /// Open a new database's connection for the selected provider
     /// If the configuration is not set or one of the property is not correct it will generate an argument null exception
     /// </summary>
-    private void OpenConnection()
+    private void OpenInternalConnection()
     {
-        try
-        {
-            // If there is already an open transaction it will do nothing
-            if (_dbTransaction is not null) return;
-
-            // Validate the current connection object
-            DatabaseException.ThrowIfConnectionIsNull(_dbConnection);
-
-            // Open a new connection
-            _dbConnection.Open();
-        }
-        catch (Exception ex)
-        {
-            LastError = ex;
-            LastSql = string.Empty;
-        }
-
-        // Add a new audit event inside the database table if the mode is enable
-        PostCommandExecution();
+        if (_dbTransaction is null || !_dbTransaction.Usable)
+            DatabaseHelper.OpenSafeConnection(_dbProvider, _dbConnection);
     }
+
 
     /// <summary>
     /// Close the active database's connection for the selected provider
     /// </summary>
-    private void CloseConnection()
+    private void CloseInternalConnection()
     {
-        try
-        {
-            if (_dbTransaction is not null) return;
-            if (_dbConnection is null) return;
-
-            // Close a previously opened connection
-            _dbConnection.Close();
-        }
-        catch (Exception ex)
-        {
-            LastError = ex;
-            LastSql = string.Empty;
-        }
-
-        // Add a new audit event inside the database table if the mode is enable
-        PostCommandExecution();
+        if (_dbTransaction is null || !_dbTransaction.Usable)
+            DatabaseHelper.CloseSafeConnection(_dbProvider, _dbConnection);
     }
 
     /// <summary>
@@ -150,45 +174,12 @@ public class Database : IDatabase
     /// </summary>
     public void BeginTransaction()
     {
-        try
-        {
-            // Check if the connection and the configuration object is valid
-            DatabaseException.ThrowIfConnectionIsNull(_dbConnection);
-            DatabaseConfigurationException.ThrowIfConfigurationIsNotValid(_dbConfiguration);
+        _dbTransaction ??= new DatabaseTransaction(_dbProvider, _dbConnection);
 
-            // Create a new transaction and start it
-            _dbTransaction = new DatabaseTransactionObject(_dbConnection);
-            _dbTransaction.BeginDatabaseTransaction();
-        }
-        catch (Exception ex)
-        {
-            LastError = ex;
-            LastSql = string.Empty;
-        }
+        if (_dbTransaction.Usable)
+            throw new DatabaseException("There is an existing open transaction!!");
 
-        // Add a new audit event inside the database table if the mode is enable
-        PostCommandExecution();
-    }
-
-    /// <summary>
-    /// Close the active database's transaction for the open connection for the selected provider
-    /// If there is any open transaction it will simply exit the method
-    /// </summary>
-    public void CommitTransaction()
-    {
-        try
-        {
-            if (_dbTransaction is null) return;
-            _dbTransaction.CommitDatabaseTransaction();
-        }
-        catch (Exception ex)
-        {
-            LastError = ex;
-            LastSql = string.Empty;
-        }
-
-        // Add a new audit event inside the database table if the mode is enable
-        PostCommandExecution();
+        _dbTransaction.BeginTransaction();
     }
 
     /// <summary>
@@ -197,134 +188,23 @@ public class Database : IDatabase
     /// </summary>
     public void RollbackTransaction()
     {
-        try
-        {
-            if (_dbTransaction is null) return;
-            _dbTransaction.RollbackDatabaseTransaction();
-        }
-        catch (Exception ex)
-        {
-            LastError = ex;
-            LastSql = string.Empty;
-        }
+        if (_dbTransaction is null || !_dbTransaction.Usable)
+            throw new DatabaseException("There is no openend transaction to perform a rollback operation!");
 
-        // Add a new audit event inside the database table if the mode is enable
-        PostCommandExecution();
+        _dbTransaction.RollbackTransaction();
     }
 
     /// <summary>
-    /// Generate a new Database Command based on the actual Database's Provider
+    /// Close the active database's transaction for the open connection for the selected provider
+    /// If there is any open transaction it will simply exit the method
     /// </summary>
-    /// <param name="commandType">Contains the database command's type</param>
-    /// <param name="sql">Contains the actual sql query</param>
-    /// <param name="args">Contains the actual sql query's parameters values</param>
-    /// <returns>A Database's Command</returns>
-    private IDbCommand? CreateCommand(CommandType commandType, string sql, object[] args)
+    public void CommitTransaction()
     {
-        // Check if the minimum required variables are correctly sets
-        ArgumentNullException.ThrowIfNull(_dbConnection);
-        ArgumentNullException.ThrowIfNull(_dbConfiguration.Provider);
+        if (_dbTransaction is null || !_dbTransaction.Usable)
+            throw new DatabaseException("There is no openend transaction to perform a commit operation!");
 
-        // Check if the query is empty
-        if (string.IsNullOrEmpty(sql)) throw new ArgumentException(null, nameof(sql));
-
-        // Create the new command
-        IDbCommand? command = null;
-
-        try
-        {
-            command = (_dbTransaction is null)
-                ? _dbConnection.CreateCommand()
-                : _dbTransaction.Connection.CreateCommand();
-
-            ArgumentNullException.ThrowIfNull(command);
-
-            command.Transaction = _dbTransaction?.Transaction;
-            command.CommandText = sql;
-            command.CommandType = commandType;
-
-            if (args.Any())
-            {
-                switch (commandType)
-                {
-                    case CommandType.Text:
-                        DatabaseHelper.AddParamsToDatabaseCommand(
-                            _dbConfiguration.Provider,
-                            ref command,
-                            new SqlBuilder(sql, args)
-                        );
-                        break;
-                    case CommandType.TableDirect:
-                        //
-                        // TODO: 
-                        //
-                        break;
-                    case CommandType.StoredProcedure:
-                        //
-                        // TODO: 
-                        //
-                        break;
-                    default:
-                        throw new ArgumentOutOfRangeException(
-                            nameof(commandType),
-                            commandType,
-                            null
-                        );
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            LastError = ex;
-            LastSql = string.Empty;
-        }
-
-        // Add a new audit event inside the database table if the mode is enable
-        PostCommandExecution();
-
-        return command;
+        _dbTransaction.CommitTransaction();
     }
-
-    /// <summary>
-    /// Create a new Database instance object from a specific Provider configuration
-    /// </summary>
-    /// <param name="provider">Contains the database instance's provider</param>
-    /// <param name="audit">Indicates if the audit mode is enable</param>
-    public Database(IProvider provider, bool audit = false) : this(provider, QUERY_TIMEOUT_VALUE, audit) { }
-
-    /// <summary>
-    /// Create a new Database instance object from a specific Provider configuration
-    /// </summary>
-    /// <param name="provider">Contains the database instance's provider</param>
-    /// <param name="operationTimeOut">Indicates the query timeout values</param>
-    /// <param name="audit">Indicates if the audit mode is enable</param>
-    public Database(IProvider provider, int operationTimeOut = QUERY_TIMEOUT_VALUE, bool audit = AUDIT_DEFAULT_VALUE)
-    {
-        // Set the configuration object
-        _dbConfiguration = new DatabaseConfiguration()
-        {
-            Provider = provider,
-            QueryTimeOut = operationTimeOut,
-            AuditMode = audit
-        };
-
-        // Validate the current loaded configuration
-        DatabaseConfigurationException.ThrowIfConfigurationIsNotValid(_dbConfiguration);
-
-        // Set the connection with the configuration's values
-        _dbConnection = _dbConfiguration.Provider!.CreateConnection();
-        _dbTransaction = null;
-
-        // Set the history property to their default values
-        LastError = null;
-        LastSql = string.Empty;
-    }
-
-    /// <summary>
-    /// Dispose the Database Instance Previously Created
-    /// </summary>
-    public void Dispose()
-        => GC.SuppressFinalize(this);
 
     #endregion
 
@@ -347,25 +227,20 @@ public class Database : IDatabase
 
             LastSql = new SqlBuilder(sql, args).ToFormatQuery();
 
-            OpenConnection();
+            OpenInternalConnection();
 
-            var cmd = CreateCommand(CommandType.Text, sql, args);
-            if (cmd is null) throw new Exception(nameof(cmd));
-
-            using (cmd)
+            using (var cmd = DatabaseHelper.CreateSafeCommand(sql, args, CommandType.Text, _dbProvider, _dbConnection, _dbTransaction))
             {
                 result = cmd.ExecuteScalar();
             }
+
+            CloseInternalConnection();
         }
         catch (Exception ex)
         {
             OnErrorOccured(ex);
             LastError = ex;
             result = default;
-        }
-        finally
-        {
-            CloseConnection();
         }
 
         // Add a new audit event inside the database table if the mode is enable
@@ -383,6 +258,7 @@ public class Database : IDatabase
     public object? Scalar<T>(SqlBuilder sql) => Scalar<T>(sql.Query, sql.Params);
 
     #endregion
+
     #region Execute Command
 
     /// <summary>
@@ -401,25 +277,20 @@ public class Database : IDatabase
 
             LastSql = new SqlBuilder(sql, args).ToFormatQuery();
 
-            OpenConnection();
+            OpenInternalConnection();
 
-            var cmd = CreateCommand(CommandType.Text, sql, args);
-            if (cmd is null) throw new Exception(nameof(cmd));
-
-            using (cmd)
+            using (var cmd = DatabaseHelper.CreateSafeCommand(sql, args, CommandType.Text, _dbProvider, _dbConnection, _dbTransaction))
             {
                 affectedRowOnCommand = cmd.ExecuteNonQuery();
             }
+
+            CloseInternalConnection();
         }
         catch (Exception ex)
         {
             OnErrorOccured(ex);
             LastError = ex;
             affectedRowOnCommand = -1;
-        }
-        finally
-        {
-            CloseConnection();
         }
 
         // Add a new audit event inside the database table if the mode is enable
@@ -436,6 +307,7 @@ public class Database : IDatabase
     public int Execute(SqlBuilder sql) => Execute(sql.Query, sql.Params);
 
     #endregion
+
     #region Query Command
 
     /// <summary>
@@ -455,19 +327,17 @@ public class Database : IDatabase
 
             LastSql = new SqlBuilder(sql, args).ToFormatQuery();
 
-            OpenConnection();
-
             // Check if exist a lothium object, if not will instance a new one
             var type = typeof(T);
             var mapper = new AutoMapper(type);
             var props = AutoMapper.GetMappedProperties<T>();
 
-            var cmd = CreateCommand(CommandType.Text, sql, args);
-            if (cmd is null) throw new Exception(nameof(cmd));
+            OpenInternalConnection();
 
-            using (cmd)
+            using (var cmd = DatabaseHelper.CreateSafeCommand(sql, args, CommandType.Text, _dbProvider, _dbConnection, _dbTransaction))
             {
                 var cmdReader = cmd.ExecuteReader();
+
                 while (cmdReader.Read())
                 {
                     if (cmdReader.FieldCount <= 0) continue;
@@ -495,16 +365,14 @@ public class Database : IDatabase
                     if (item is not null) result.Add((T)item);
                 }
             }
+
+            CloseInternalConnection();
         }
         catch (Exception ex)
         {
             OnErrorOccured(ex);
             LastError = ex;
             result = null;
-        }
-        finally
-        {
-            CloseConnection();
         }
 
         // Add a new audit event inside the database table if the mode is enable
@@ -519,7 +387,7 @@ public class Database : IDatabase
     /// <typeparam name="T">Contains the type for the returned object</typeparam>
     /// <param name="sql">Contains the SQL object</param>
     /// <returns>A value based of the object type</returns>
-    public IEnumerable<T> Query<T>(SqlBuilder sql) => Query<T>(sql.Query, sql.Params);
+    public IEnumerable<T>? Query<T>(SqlBuilder sql) => Query<T>(sql.Query, sql.Params);
 
     #endregion
 
@@ -557,6 +425,7 @@ public class Database : IDatabase
         => FindAll<T>(new SqlBuilder(sql, args));
 
     #endregion
+
     #region FindSingle Command
 
     /// <summary>
@@ -566,10 +435,11 @@ public class Database : IDatabase
     /// <returns>A value based of the object type</returns>
     public T? FindSingle<T>(SqlBuilder sql)
     {
-        var result = Query<T>(sql).ToList();
+        var result = Query<T>(sql);
+
         return (result is null)
-            ? default(T) 
-            : result.FirstElement();
+            ? default
+            : result.ToList().FirstElement();
     }
 
     /// <summary>
@@ -584,6 +454,7 @@ public class Database : IDatabase
         => FindSingle<T>(new SqlBuilder(sql, args));
 
     #endregion
+
     #region FetchPage
 
     /// <summary>
@@ -595,7 +466,7 @@ public class Database : IDatabase
     public List<T> FetchPage<T>(PageObject<T> page)
     {
         return FetchPage<T>(
-            page, 
+            page,
             AutoMapper
                 .AutoSelectClause<T>()
                 .Where("WHERE 1=1")
@@ -611,9 +482,15 @@ public class Database : IDatabase
     /// <returns>A value based of the object type</returns>
     public List<T> FetchPage<T>(PageObject<T> page, SqlBuilder sql)
     {
-        if (_dbConfiguration.Provider is null) return (List<T>)Enumerable.Empty<T>();
-        var pageSql = _dbConfiguration.Provider.BuildPageQuery<T>(page, sql);
-        return (List<T>)(string.IsNullOrEmpty(pageSql.Query) ? Enumerable.Empty<T>() : Query<T>(pageSql).ToList());
+        if (_dbProvider is null)
+            return (List<T>)Enumerable.Empty<T>();
+
+        var pageSql = _dbProvider.BuildPageQuery<T>(page, sql);
+
+        return (List<T>)(string.IsNullOrEmpty(pageSql.Query)
+            ? Enumerable.Empty<T>()
+            : Query<T>(pageSql).ToList()
+        );
     }
 
     /// <summary>
@@ -642,18 +519,18 @@ public class Database : IDatabase
         SqlBuilder? sql;
 
         // Check the if the required variables are correctly sets
-        if (!_dbConfiguration.AuditMode) return;
+        if (!_dbAuditMode) return;
 
         // Set a true the audit action flag
         _auditExec = true;
 
         // If the audit table not exists it will create it
-        if (!_auditTableChecked && _dbConfiguration.AuditMode)
+        if (!_auditTableChecked && _dbAuditMode)
         {
-            sql = _dbConfiguration.Provider!.CheckIfAuditTableExists();
+            sql = _dbProvider!.CheckIfAuditTableExists();
             if (Execute(sql) == 0)
             {
-                sql = _dbConfiguration.Provider!.CreateAuditTable();
+                sql = _dbProvider!.CreateAuditTable();
                 Execute(sql);
             }
             _auditTableChecked = true;
@@ -688,9 +565,7 @@ public class Database : IDatabase
     #region Insert, Update, Save, Delete, Exist Methods
 
     /// <summary>
-    ///     <para>
-    ///         Insert the passed object inside a table of the database in the form of a row
-    ///     </para>
+    /// Insert the passed object inside a table of the database in the form of a row
     /// </summary>
     /// <param name="obj">Contains the object with the db table's mapping</param>
     /// <typeparam name="T">Contains the type of the objects to be insert inside the database</typeparam>
@@ -699,9 +574,7 @@ public class Database : IDatabase
         => Execute(AutoMapper.AutoInsertClause<T>(obj));
 
     /// <summary>
-    ///     <para>
-    ///         Insert the passed list of objects inside a table of the database in the form of a row
-    ///     </para>
+    /// Insert the passed list of objects inside a table of the database in the form of a row
     /// </summary>
     /// <param name="objs">Contains the list of the objects with the db table's mapping</param>
     /// <typeparam name="T">Contains the type of the objects to be insert inside the database</typeparam>
@@ -718,9 +591,7 @@ public class Database : IDatabase
     }
 
     /// <summary>
-    ///     <para>
-    ///         Update a number of element inside a table of the database
-    ///     </para>
+    /// Update a number of element inside a table of the database
     /// </summary>
     /// <param name="obj">Contains the object with the db table's mapping</param>
     /// <typeparam name="T">Contains the type of the objects to be insert inside the database</typeparam>
@@ -729,9 +600,7 @@ public class Database : IDatabase
         => Execute(AutoMapper.AutoUpdateClause<T>(obj));
 
     /// <summary>
-    ///     <para>
-    ///         Update the passed list of elements inside a table of the database
-    ///     </para>
+    /// Update the passed list of elements inside a table of the database
     /// </summary>
     /// <param name="objs">Contains the list of the objects with the db table's mapping</param>
     /// <typeparam name="T">Contains the type of the objects to be updated inside the database</typeparam>
@@ -748,9 +617,7 @@ public class Database : IDatabase
     }
 
     /// <summary>
-    ///     <para>
-    ///         Delete a number of element inside a table of the database
-    ///     </para>
+    /// Delete a number of element inside a table of the database
     /// </summary>
     /// <param name="obj">Contains the object with the db table's mapping</param>
     /// <returns>Return an object that contains the number of affected rows</returns>
@@ -758,9 +625,7 @@ public class Database : IDatabase
         => Execute(AutoMapper.AutoDeleteClause<T>(obj));
 
     /// <summary>
-    ///     <para>
-    ///         Delete the passed list of elements inside a table of the database
-    ///     </para>
+    /// Delete the passed list of elements inside a table of the database
     /// </summary>
     /// <param name="objs">Contains the list of the objects with the db table's mapping</param>
     /// <typeparam name="T">Contains the type of the objects to be deleted from the database</typeparam>
@@ -777,9 +642,7 @@ public class Database : IDatabase
     }
 
     /// <summary>
-    ///     <para>
-    ///         If an object already exist inside the database will update it, otherwise will create it
-    ///     </para>
+    /// If an object already exist inside the database will update it, otherwise will create it
     /// </summary>
     /// <typeparam name="T">Contains the type for the returned object</typeparam>
     /// <param name="obj">Contains the object with the db table's mapping</param>
@@ -788,9 +651,7 @@ public class Database : IDatabase
         => Exist<T>(obj) ? Update<T>(obj) : Insert<T>(obj);
 
     /// <summary>
-    ///     <para>
-    ///         Search inside the database's if a record exist
-    ///     </para>
+    /// Search inside the database's if a record exist
     /// </summary>
     /// <param name="sql">Contains the SQL object</param>
     /// <returns></returns>
@@ -798,9 +659,7 @@ public class Database : IDatabase
         => Convert.ToBoolean(Scalar<int>(sql));
 
     /// <summary>
-    ///     <para>
-    ///         Search inside the database's if a record exist
-    ///     </para>
+    /// Search inside the database's if a record exist
     /// </summary>
     /// <param name="sql">Contains the query command to be executed</param>
     /// <param name="args">Contains all the extra arguments of the query</param>
@@ -809,9 +668,7 @@ public class Database : IDatabase
         => Exist(new SqlBuilder(sql, args));
 
     /// <summary>
-    ///     <para>
-    ///         Search inside the database's if a record exist
-    ///     </para>
+    /// Search inside the database's if a record exist
     /// </summary>
     /// <typeparam name="T">Contains the type for the returned object</typeparam>
     /// <param name="obj">Contains the object with the db table's mapping</param>

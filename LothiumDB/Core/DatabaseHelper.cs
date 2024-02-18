@@ -1,7 +1,10 @@
-﻿using System.Data;
+﻿using System.Configuration.Provider;
+using System.Data;
+using System.Data.Common;
 using System.Text.RegularExpressions;
 using LothiumDB.Core.Interfaces;
 using LothiumDB.Core.PocoDataInfo;
+using LothiumDB.Exceptions;
 using LothiumDB.Tools;
 
 namespace LothiumDB.Core;
@@ -12,6 +15,90 @@ namespace LothiumDB.Core;
 /// </summary>
 internal static class DatabaseHelper
 {
+    /// <summary>
+    /// Open a new db's connection in safe
+    /// </summary>
+    /// <param name="connection">Contains the connection object to be opended</param>
+    /// <param name="configuration">Contains the configuration of the db instance</param>
+    public static void OpenSafeConnection(IProvider provider, IDbConnection? connection)
+    {
+        connection ??= provider.CreateConnection();
+
+        if (ConnectionState.Closed == connection.State)
+            connection.Open();
+    }
+
+    /// <summary>
+    /// Close an existing db's connection in safe if the provider doesn't want it to be keeped open
+    /// </summary>
+    /// <param name="connection">Contains the connection object to be opended</param>
+    /// <param name="configuration">Contains the configuration of the db instance</param>
+    /// <param name="keepOpen">Indicate if the connection need to be keeped open</param>
+    public static void CloseSafeConnection(IProvider provider, IDbConnection? connection, bool keepOpen = false)
+    {
+        if (connection is null) return;
+
+        if (keepOpen)
+            OpenSafeConnection(provider, connection);
+
+        if ((ConnectionState.Open == connection.State) && !keepOpen)
+            connection.Close();
+    }
+
+    /// <summary>
+    /// Create a new db's command in safe
+    /// If the sql have some parameters they will be automatically added to the command
+    /// If the command need a transaction it will be automatically added to the command
+    /// </summary>
+    /// <param name="sql">Contains the query or stored procedure to be executed</param>
+    /// <param name="args">Contains all the variable/parameters required by the query or stored procedure</param>
+    /// <param name="cmdType">Indicates what type of command must be created</param>
+    /// <param name="provider">Contains the db's configuration</param>
+    /// <param name="connection">Contains the actual db's connection</param>
+    /// <param name="transaction">Contains an optional db's transaction</param>
+    /// <returns>An object of type DbCommand based on the configuration's provider</returns>
+    public static IDbCommand CreateSafeCommand(
+        string sql,
+        object[] args,
+        CommandType cmdType,
+        IProvider provider,
+        IDbConnection connection,
+        DatabaseTransaction transaction
+    )
+    {
+        // Check if the minimum required variables are correctly sets
+        DatabaseException.ThrowIfNull(provider, "Database Provider");
+        DatabaseException.ThrowIfNull(connection, "Database Connection");
+        DatabaseException.ThrowIfNull(transaction, "Database Transaction");
+        DatabaseException.ThrowIfNullOrEmpty(sql);
+
+        // Create the new command
+        // Create the new command
+        var command = provider.CreateCommand(
+            sql,
+            (transaction.Transaction is null)
+                ? connection
+                : transaction.Connection,
+            (transaction.Transaction is null)
+                ? null
+                : transaction.Transaction
+        );
+        command.CommandType = cmdType;
+
+        if (args.Length != 0)
+        {
+            DatabaseHelper.AddParamsToDatabaseCommand(
+                provider,
+                ref command,
+                new SqlBuilder(sql, args)
+            );
+        }
+
+        DatabaseException.ThrowIfNull(command);
+
+        return command;
+    }
+
     /// <summary>
     /// Retrieve all the parameter's variables inside a sql query
     /// </summary>
@@ -40,8 +127,8 @@ internal static class DatabaseHelper
         {
             ArgumentNullException.ThrowIfNull(columnData.DefaultValue, nameof(columnData.DefaultValue));
 
-            var colName = (string.IsNullOrEmpty(columnData.Name)) 
-                ? columnData.PocoObjectPropertyName 
+            var colName = (string.IsNullOrEmpty(columnData.Name))
+                ? columnData.PocoObjectPropertyName
                 : columnData.Name;
 
             throw new Exception($"The column {colName} don't allow nullable values");

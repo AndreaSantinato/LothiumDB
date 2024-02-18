@@ -14,6 +14,8 @@ public interface IProvider
     
     abstract IDbConnection CreateConnection();
 
+    abstract IDbCommand CreateCommand(string command, IDbConnection connection, IDbTransaction? transaction);
+
     abstract SqlBuilder BuildPageQuery<T>(PageObject<T> pageObj, SqlBuilder sql);
 
     abstract SqlBuilder CheckIfAuditTableExists();
