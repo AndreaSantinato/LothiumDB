@@ -10,25 +10,48 @@ public static class TestTransactionMethods
     {
         try
         {
+            var sql = new SqlBuilder();
+
             database.BeginTransaction();
 
             // Create a new element in the database
-            var prop7 = new TestTable()
-            {
-                Name = "Prop7",
-                Description = "Property 7",
-                Value1 = "Value 7",
-                Value2 = 7,
-                Value3 = DateTime.Now
-            };
-            database.Save<TestTable>(prop7);
+            sql.Clear();
+            sql.Append(@"
+                INSERT INTO [dbo].[TestTable]
+                (
+                    [PropertyName]
+                    , [PropertyDescription]
+                    , [PropertyStringValue]
+                    , [PropertyIntValue]
+                    , [PropertyDateTimeValue]
+                )
+                VALUES
+                (
+                    'Prop7'
+                    , 'Test Property 7'
+                    , 'Value 7'
+                    , 7
+                    , GETDATE()
+                )
+            ");
+            var rows = database.Execute(sql);
 
             // Update the previously created element in the database
-            prop7.Description = "Updated Description Of Property 7";
-            database.Save<TestTable>(prop7);
+            sql.Clear();
+            sql.Append(@"
+                UPDATE  [dbo].[TestTable]
+                SET     [PropertyDescription] = 'Updated Description Of Property 7'
+                WHERE   [PropertyName] = 'Prop7'
+            ");
+            rows = database.Execute(sql);
 
             // Delete the previously created and updated element in the database
-            database.Delete<TestTable>(prop7);
+            sql.Clear();
+            sql.Append(@"
+                DELETE  FROM [dbo].[TestTable]
+                WHERE   [PropertyName] = 'Prop7'
+            ");
+            rows = database.Execute(sql);
 
             database.CommitTransaction();
         }

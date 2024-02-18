@@ -11,7 +11,7 @@ public static class TestCoreMethods
 
         sql.Clear();
         sql.Append("DELETE FROM TestTable");
-        database.Execute(sql);
+        var rows = database.Execute(sql);
 
         sql.Clear();
         sql.Append(@"
@@ -31,7 +31,7 @@ public static class TestCoreMethods
                     ('Prop5', 'Test Property 5', 'Value 5', 5, GETDATE()),
                     ('Prop6', 'Test Property 6', 'Value 6', 6, GETDATE())
             ");
-        database.Execute(sql);
+        rows = database.Execute(sql);
 
         sql.Clear();
         sql.Select().From("TestTable");
