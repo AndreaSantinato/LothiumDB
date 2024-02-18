@@ -3,7 +3,7 @@
 /// <summary>
 /// Extension Class Used By The Database Class
 /// </summary>
-public static partial class QueryResult
+public static partial class QueryExtension
 {
     /// <summary>
     /// Retrieve the first element from a source list
