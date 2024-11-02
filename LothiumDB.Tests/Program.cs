@@ -1,32 +1,37 @@
-﻿using LothiumDB;
+﻿using System.Data.SqlClient;
+using LothiumDB;
+using LothiumDB.Core.Enumerations;
 using LothiumDB.Providers;
 using LothiumDB.Tools;
 using LothiumDB.Tests.Testers;
 
-Console.WriteLine("Start Testing Console Project");
+Console.WriteLine("[I] Start Testing Console Project");
 
-// Generate a new db instance from a specific provider configuration //
-var prov = new MsSqlServerProvider(
-    dataSource: "192.168.1.124",
-    userId: "SA",
-    password: "SntnAndr28021998",
-    initialCatalog: "LothiumDB_Dev",
-    currentLanguage: "Italian",
-    encrypt: false,
-    trustServerCertificate: false
-);
-var db = new Database(prov, false);
-var sql = new SqlBuilder();
-
-// Execute test examples //
+using var db = DatabaseBuilder
+    .CreateBuilder()
+    .AddProvider(
+        ProviderTypesEnum.MicrosoftSqlServer,
+        new SqlConnection(
+            new SqlConnectionStringBuilder()
+            {
+                ConnectRetryCount = 2,
+                ConnectTimeout = 30,
+                DataSource = "192.168.1.124",
+                UserID = "SA",
+                Password = "SntnAndr28021998",
+                InitialCatalog = "LothiumDB_Dev",
+                CurrentLanguage = "Italian",
+                Encrypt = false,
+                TrustServerCertificate = false
+            }.ConnectionString
+        ),
+        "@"
+    )
+    .SetCommandTimeOut(30)
+    .Build();
 
 TestCoreMethods.ExecuteTests(db);
 TestExtendedMethods.ExecuteTests(db);
 TestTransactionMethods.ExecuteTests(db);
-
-// Dispose the database instance //
-
-db.Dispose();
-db = null;
 
 return;

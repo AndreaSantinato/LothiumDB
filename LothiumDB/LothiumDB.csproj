@@ -1,9 +1,8 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
     <Title>LothiumDB - Simple DIY ORM Library For C#</Title>
     <Authors>LothiumSolutions</Authors>
     <Description>A Simple An Easy To Use C# ORM To manage different type of database connections and datas</Description>
@@ -23,7 +22,7 @@
     <Company>LothiumSolutions</Company>
     <RepositoryType>git</RepositoryType>
     <PackageLicenseUrl></PackageLicenseUrl>
-    <LangVersion>10</LangVersion>
+    <LangVersion>12</LangVersion>
     <TargetFramework>net8.0</TargetFramework>
     <IsPackable>true</IsPackable>
     <PackageLicenseFile>LICENSE</PackageLicenseFile>
@@ -60,15 +59,7 @@
     <EmbeddedResource Remove="Data\**" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="..\LICENSE">
-      <Pack>True</Pack>
-      <PackagePath>\</PackagePath>
-    </None>
-    <None Include="..\README.md">
-      <Pack>True</Pack>
-      <PackagePath>\</PackagePath>
-    </None>
-    <None Include="D:\GitHub Repository\LothiumDB\LothiumDB\LothiumDB.png">
+    <None Include="LothiumDB\LothiumDB.png">
       <Pack>True</Pack>
       <PackagePath>\</PackagePath>
     </None>

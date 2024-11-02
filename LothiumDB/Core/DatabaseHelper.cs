@@ -15,6 +15,62 @@ namespace LothiumDB.Core;
 /// </summary>
 internal static class DatabaseHelper
 {
+    public static bool CheckConnectionStatus(IDbConnection connection)
+    {
+        return connection.State switch
+        {
+            ConnectionState.Open => true,
+            ConnectionState.Connecting => true,
+            ConnectionState.Fetching => true,
+            ConnectionState.Executing => true,
+            ConnectionState.Broken => false,
+            ConnectionState.Closed => false,
+            _ => false
+        };
+    }
+    
+    public static void OpenConnectionSafe(IDbConnection connection)
+    {
+        if (CheckConnectionStatus(connection))
+            return;
+        
+        connection.Open();
+    }
+
+    public static void CloseConnectionSafe(IDbConnection connection, bool keepOpen = false)
+    {
+        if (keepOpen)
+        {
+            OpenConnectionSafe(connection);
+
+            return;
+        }
+
+        if (CheckConnectionStatus(connection))
+        {
+            connection.Close();
+        }
+    }
+
+    public static void CreateTransactionSafe(IDbConnection connection, out IDbTransaction transaction)
+    {
+        transaction = connection.BeginTransaction();
+    }
+
+    public static void CloseTransactionSafe(IDbTransaction transaction, bool rollback = false)
+    {
+        if (rollback)
+            transaction?.Rollback();
+        else
+            transaction?.Commit();
+        
+        transaction?.Dispose();
+    }
+    
+    
+    
+    
+    
     /// <summary>
     /// Open a new db's connection in safe
     /// </summary>
@@ -46,66 +102,12 @@ internal static class DatabaseHelper
     }
 
     /// <summary>
-    /// Create a new db's command in safe
-    /// If the sql have some parameters they will be automatically added to the command
-    /// If the command need a transaction it will be automatically added to the command
-    /// </summary>
-    /// <param name="sql">Contains the query or stored procedure to be executed</param>
-    /// <param name="args">Contains all the variable/parameters required by the query or stored procedure</param>
-    /// <param name="cmdType">Indicates what type of command must be created</param>
-    /// <param name="provider">Contains the db's configuration</param>
-    /// <param name="connection">Contains the actual db's connection</param>
-    /// <param name="transaction">Contains an optional db's transaction</param>
-    /// <returns>An object of type DbCommand based on the configuration's provider</returns>
-    public static IDbCommand CreateSafeCommand(
-        string sql,
-        object[] args,
-        CommandType cmdType,
-        IProvider provider,
-        IDbConnection connection,
-        DatabaseTransaction transaction
-    )
-    {
-        // Check if the minimum required variables are correctly sets
-        DatabaseException.ThrowIfNull(provider, "Database Provider");
-        DatabaseException.ThrowIfNull(connection, "Database Connection");
-        DatabaseException.ThrowIfNull(transaction, "Database Transaction");
-        DatabaseException.ThrowIfNullOrEmpty(sql);
-
-        // Create the new command
-        // Create the new command
-        var command = provider.CreateCommand(
-            sql,
-            (transaction.Transaction is null)
-                ? connection
-                : transaction.Connection,
-            (transaction.Transaction is null)
-                ? null
-                : transaction.Transaction
-        );
-        command.CommandType = cmdType;
-
-        if (args.Length != 0)
-        {
-            DatabaseHelper.AddParamsToDatabaseCommand(
-                provider,
-                ref command,
-                new SqlBuilder(sql, args)
-            );
-        }
-
-        DatabaseException.ThrowIfNull(command);
-
-        return command;
-    }
-
-    /// <summary>
     /// Retrieve all the parameter's variables inside a sql query
     /// </summary>
     /// <param name="provider">Contains the chosen database provider</param>
     /// <param name="sql">Contains the actual sql query</param>
     /// <returns></returns>
-    private static MatchCollection? ExtractParametersVariableFromQuery(IProvider provider, SqlBuilder sql)
+    private static MatchCollection? ExtractParametersVariableFromQuery(IDatabaseProvider provider, SqlBuilder sql)
     {
         var regex = new Regex(
             $@"(?<!{provider.GetVariablePrefix()}){provider.GetVariablePrefix()}\w+",
@@ -144,7 +146,7 @@ internal static class DatabaseHelper
     /// <param name="provider">Contains the loaded database provider</param>
     /// <param name="command">Contains the database command to add the parameters</param>
     /// <param name="sql">Contains the sql query</param>
-    public static void AddParamsToDatabaseCommand(IProvider provider, ref IDbCommand command, SqlBuilder sql)
+    public static void AddParamsToDatabaseCommand(IDatabaseProvider provider, ref IDbCommand command, SqlBuilder sql)
     {
         var paramsList = new Dictionary<string, object>();
 

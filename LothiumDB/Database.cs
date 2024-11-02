@@ -15,41 +15,21 @@ namespace LothiumDB;
 /// </summary>
 public class Database : IDatabase
 {
-    private IProvider _dbProvider;
-    private IDbConnection _dbConnection;
-    private DatabaseTransaction? _dbTransaction;
-    private int _dbQueryTimeOut = 30;
-    private bool _dbAuditMode = false;
-    private bool _auditExec = false;
-    private bool _auditTableChecked = false;
     private bool _disposed = false;
-    private const int QUERY_TIMEOUT_VALUE = 30;
-    private const bool AUDIT_DEFAULT_VALUE = false;
 
+    private readonly DatabaseProvider _provider;
+    private readonly IDbConnection _connection;
+    private IDbTransaction? _transaction;
+    private readonly int _commandTimeout;
+    
     #region Properties
 
     /// <summary>
     /// Indicates if the current database instance connection is open
     /// </summary>
     public bool IsConnectionOpen
-    {
-        get
-        {
-            if (_dbConnection is null) return false;
-
-            return _dbConnection.State switch
-            {
-                ConnectionState.Open => true,
-                ConnectionState.Connecting => true,
-                ConnectionState.Fetching => true,
-                ConnectionState.Executing => true,
-                ConnectionState.Broken => false,
-                ConnectionState.Closed => false,
-                _ => throw new ArgumentOutOfRangeException()
-            };
-        }
-    }
-
+        => DatabaseHelper.CheckConnectionStatus(_connection);
+    
     /// <summary>
     /// Contains the complete last executed query with all parameters replace
     /// </summary>
@@ -60,15 +40,6 @@ public class Database : IDatabase
     /// </summary>
     public Exception? LastError { get; private set; }
 
-    /// <summary>
-    /// Contains the database's command timeout value
-    /// </summary>
-    public int CommandTimeOut
-    {
-        get => _dbQueryTimeOut;
-        set => _dbQueryTimeOut = value;
-    }
-
     #endregion
 
     #region Constructors & Destructors
@@ -76,28 +47,22 @@ public class Database : IDatabase
     /// <summary>
     /// Create a new Database instance object from a specific Provider configuration
     /// </summary>
-    /// <param name="provider">Contains the database instance's provider</param>
-    /// <param name="audit">Indicates if the audit mode is enable</param>
-    public Database(IProvider provider, bool audit = false) : this(provider, QUERY_TIMEOUT_VALUE, audit) { }
-
-    /// <summary>
-    /// Create a new Database instance object from a specific Provider configuration
-    /// </summary>
-    /// <param name="provider">Contains the database instance's provider</param>
-    /// <param name="operationTimeOut">Indicates the query timeout values</param>
-    /// <param name="audit">Indicates if the audit mode is enable</param>
-    public Database(IProvider provider, int operationTimeOut = QUERY_TIMEOUT_VALUE, bool audit = AUDIT_DEFAULT_VALUE)
+    /// <param name="configuration">Contains a configuration that will be used to perform database operation inside a specific database's instance</param>
+    public Database(DatabaseConfiguration configuration)
     {
-        // Set the configuration object
-        _dbProvider = provider;
-        _dbQueryTimeOut = operationTimeOut;
-        _dbAuditMode = audit;
-
-        // Generate the new connection and transaction objects
-        _dbConnection = _dbProvider.CreateConnection();
-        _dbTransaction = new DatabaseTransaction(_dbProvider, _dbConnection);
-
-        // Set the history property to their default values
+        ArgumentNullException.ThrowIfNull(configuration);
+        ArgumentNullException.ThrowIfNull(configuration.Connection);
+        ArgumentException.ThrowIfNullOrEmpty(configuration.VariablePrefix);
+        ArgumentNullException.ThrowIfNull(configuration.CommandTimeout);
+        
+        if (configuration.CommandTimeout <= 0)
+            throw new ArgumentException("The command timeout must be greater than zero!");
+        
+        _provider = new DatabaseProvider(configuration.Type, (string)configuration.VariablePrefix);
+        _connection = configuration.Connection;
+        _transaction = null;
+        _commandTimeout = (int)configuration.CommandTimeout;
+        
         LastError = null;
         LastSql = string.Empty;
     }
@@ -106,107 +71,131 @@ public class Database : IDatabase
     /// Dispose the Database Instance Previously Created
     /// </summary>
     public void Dispose()
-        => DisposeInstance(true);
-
+    {
+        if (!_disposed)
+        {
+            _connection.Dispose();
+            _transaction?.Dispose();
+            _transaction = null;   
+        }
+        
+        _disposed = true;
+        
+        GC.SuppressFinalize(this);
+    }
+    
     #endregion Constructors & Destructors
 
-    #region Context Initialization
+    #region Object Management (Connection, Transaction, Command, Parameters)
 
+    private void SafeOpenConnection()
+    {
+        if (_transaction is not null) return;
+        if (DatabaseHelper.CheckConnectionStatus(_connection)) return;
+        
+        _connection.Open();
+    }
+
+    private void SafeCloseConnection()
+    {
+        if (_transaction is not null) return;
+        if (!DatabaseHelper.CheckConnectionStatus(_connection)) return;
+        
+        _connection.Close();
+    }
+
+    private void SafeOpenTransaction()
+    {
+        if (_transaction is not null)
+            throw new DatabaseException("There is an existing open transaction!!");
+        
+        _transaction = _connection.BeginTransaction();
+    }
+
+    private void SafeCloseTransaction(bool rollback)
+    {
+        if (_transaction is null)
+            throw new DatabaseException("There is no open transaction to close!");
+
+        if (rollback)
+            _transaction.Rollback();
+        else
+            _transaction.Commit();
+
+        _transaction.Dispose();
+        _transaction = null;
+    }
+
+    /// <summary>
+    /// Create a new db's command in safe
+    /// If the sql have some parameters they will be automatically added to the command
+    /// If the command need a transaction it will be automatically added to the command
+    /// </summary>
+    /// <param name="sql">Contains the query or stored procedure to be executed</param>
+    /// <param name="args">Contains all the variable/parameters required by the query or stored procedure</param>
+    /// <param name="commandType">Indicates what type of command must be created</param>
+    /// <returns>An object of type DbCommand based on the configuration's provider</returns>
+    private IDbCommand SafeCreateCommand(
+        string sql,
+        object[] args,
+        CommandType commandType
+    )
+    {
+        // Check if the minimum required variables are correctly sets
+        DatabaseException.ThrowIfNullOrEmpty(sql);
+        if (sql.Contains('@') && args.Length.Equals(0))
+            throw new DatabaseException("The provided SQL contains variables but the actual parameters were not provided!");
+
+        // Create the new command
+        var command = _connection.CreateCommand();
+        
+        command.Transaction = _transaction;
+        command.CommandText = sql;
+        command.CommandType = commandType;
+
+        if (args.Length != 0)
+        {
+            DatabaseHelper.AddParamsToDatabaseCommand(
+                _provider,
+                ref command,
+                new SqlBuilder(sql, args)
+            );
+        }
+
+        DatabaseException.ThrowIfNull(command);
+
+        return command;
+    }
+    
+    #endregion
+    
     protected virtual void OnErrorOccured(Exception exception)
     {
         //
         // ToDo: Define the base actions
         //
     }
-
-    /// <summary>
-    /// This overridable method is executed after a core operation's error
-    /// If the audit mode is enable it will track the error inside the dedicated database's table
-    /// if you override this method you can write your own audit methods
-    /// </summary>
-    protected virtual void PostCommandExecution()
-    {
-        // Check if the audit is not enabled, if not write inside the dedicated table the event
-        if (!_auditExec) NewAuditEvent(DateTime.Now, LastSql!, LastError);
-    }
-
-    private void DisposeInstance(bool dispose)
-    {
-        if (_disposed) return;
-
-        if (dispose)
-        {
-            //
-            // ToDo: Defines the resource to deallocate from the memory
-            //
-        }
-
-        GC.SuppressFinalize(this);
-    }
-
-    #endregion Context Initialization
-
-    #region Connection & Transaction
-
-    /// <summary>
-    /// Open a new database's connection for the selected provider
-    /// If the configuration is not set or one of the property is not correct it will generate an argument null exception
-    /// </summary>
-    private void OpenInternalConnection()
-    {
-        if (_dbTransaction is null || !_dbTransaction.Usable)
-            DatabaseHelper.OpenSafeConnection(_dbProvider, _dbConnection);
-    }
-
-
-    /// <summary>
-    /// Close the active database's connection for the selected provider
-    /// </summary>
-    private void CloseInternalConnection()
-    {
-        if (_dbTransaction is null || !_dbTransaction.Usable)
-            DatabaseHelper.CloseSafeConnection(_dbProvider, _dbConnection);
-    }
-
+    
     /// <summary>
     /// Start a new database's transaction for an open connection for the selected provider
     /// if the connection is not set or open will return an argument null exception
     /// </summary>
-    public void BeginTransaction()
-    {
-        _dbTransaction ??= new DatabaseTransaction(_dbProvider, _dbConnection);
-
-        if (_dbTransaction.Usable)
-            throw new DatabaseException("There is an existing open transaction!!");
-
-        _dbTransaction.BeginTransaction();
-    }
+    public void BeginTransaction() 
+        => SafeOpenTransaction();
 
     /// <summary>
     /// Revert all the operations executed during the active database's transaction for the open connection for the selected provider
     /// If there is any open transaction it will simply exit the method
     /// </summary>
     public void RollbackTransaction()
-    {
-        if (_dbTransaction is null || !_dbTransaction.Usable)
-            throw new DatabaseException("There is no openend transaction to perform a rollback operation!");
-
-        _dbTransaction.RollbackTransaction();
-    }
+        => SafeCloseTransaction(true);
 
     /// <summary>
     /// Close the active database's transaction for the open connection for the selected provider
     /// If there is any open transaction it will simply exit the method
     /// </summary>
     public void CommitTransaction()
-    {
-        if (_dbTransaction is null || !_dbTransaction.Usable)
-            throw new DatabaseException("There is no openend transaction to perform a commit operation!");
-
-        _dbTransaction.CommitTransaction();
-    }
-
-    #endregion
+        => SafeCloseTransaction(false);
 
     #region  Scalar Command
 
@@ -227,24 +216,25 @@ public class Database : IDatabase
 
             LastSql = new SqlBuilder(sql, args).ToFormatQuery();
 
-            OpenInternalConnection();
+            SafeOpenConnection();
 
-            using (var cmd = DatabaseHelper.CreateSafeCommand(sql, args, CommandType.Text, _dbProvider, _dbConnection, _dbTransaction))
+            using (var cmd = SafeCreateCommand(sql, args, CommandType.Text))
             {
                 result = cmd.ExecuteScalar();
             }
-
-            CloseInternalConnection();
         }
         catch (Exception ex)
         {
             OnErrorOccured(ex);
+            
             LastError = ex;
+            
             result = default;
         }
-
-        // Add a new audit event inside the database table if the mode is enable
-        PostCommandExecution();
+        finally
+        {
+            SafeCloseTransaction(false);
+        }
 
         return result;
     }
@@ -255,7 +245,8 @@ public class Database : IDatabase
     /// <typeparam name="T">Contains the type for the returned object</typeparam>
     /// <param name="sql">Contains the SQL object</param>
     /// <returns>A value based of the object type</returns>
-    public object? Scalar<T>(SqlBuilder sql) => Scalar<T>(sql.Query, sql.Params);
+    public object? Scalar<T>(SqlBuilder sql) 
+        => Scalar<T>(sql.Query, sql.Params);
 
     #endregion
 
@@ -277,14 +268,12 @@ public class Database : IDatabase
 
             LastSql = new SqlBuilder(sql, args).ToFormatQuery();
 
-            OpenInternalConnection();
+            SafeOpenConnection();
 
-            using (var cmd = DatabaseHelper.CreateSafeCommand(sql, args, CommandType.Text, _dbProvider, _dbConnection, _dbTransaction))
+            using (var cmd = SafeCreateCommand(sql, args, CommandType.Text))
             {
                 affectedRowOnCommand = cmd.ExecuteNonQuery();
             }
-
-            CloseInternalConnection();
         }
         catch (Exception ex)
         {
@@ -292,9 +281,10 @@ public class Database : IDatabase
             LastError = ex;
             affectedRowOnCommand = -1;
         }
-
-        // Add a new audit event inside the database table if the mode is enable
-        PostCommandExecution();
+        finally
+        {
+            SafeCloseConnection();
+        }
 
         return affectedRowOnCommand;
     }
@@ -304,7 +294,8 @@ public class Database : IDatabase
     /// </summary>
     /// <param name="sql">Contains the SQL object</param>
     /// <returns>An int value that count all the affected table rows</returns>
-    public int Execute(SqlBuilder sql) => Execute(sql.Query, sql.Params);
+    public int Execute(SqlBuilder sql)
+        => Execute(sql.Query, sql.Params);
 
     #endregion
 
@@ -332,9 +323,9 @@ public class Database : IDatabase
             var mapper = new AutoMapper(type);
             var props = AutoMapper.GetMappedProperties<T>();
 
-            OpenInternalConnection();
+            SafeOpenConnection();
 
-            using (var cmd = DatabaseHelper.CreateSafeCommand(sql, args, CommandType.Text, _dbProvider, _dbConnection, _dbTransaction))
+            using (var cmd = SafeCreateCommand(sql, args, CommandType.Text))
             {
                 var cmdReader = cmd.ExecuteReader();
 
@@ -349,7 +340,8 @@ public class Database : IDatabase
 
                     foreach (var prop in props)
                     {
-                        var colInfo = Array.Find(mapper.ColumnsData.ToArray(), col => col.PocoObjectPropertyName == prop.Name);
+                        var colInfo = Array.Find(mapper.ColumnsData.ToArray(),
+                            col => col.PocoObjectPropertyName == prop.Name);
                         ArgumentNullException.ThrowIfNull(colInfo, nameof(colInfo));
 
                         var value = (string.IsNullOrEmpty(colInfo.Name))
@@ -365,8 +357,6 @@ public class Database : IDatabase
                     if (item is not null) result.Add((T)item);
                 }
             }
-
-            CloseInternalConnection();
         }
         catch (Exception ex)
         {
@@ -374,9 +364,10 @@ public class Database : IDatabase
             LastError = ex;
             result = null;
         }
-
-        // Add a new audit event inside the database table if the mode is enable
-        PostCommandExecution();
+        finally
+        {
+            SafeCloseConnection();
+        }
 
         return result;
     }
@@ -387,7 +378,8 @@ public class Database : IDatabase
     /// <typeparam name="T">Contains the type for the returned object</typeparam>
     /// <param name="sql">Contains the SQL object</param>
     /// <returns>A value based of the object type</returns>
-    public IEnumerable<T>? Query<T>(SqlBuilder sql) => Query<T>(sql.Query, sql.Params);
+    public IEnumerable<T>? Query<T>(SqlBuilder sql) 
+        => Query<T>(sql.Query, sql.Params);
 
     #endregion
 
@@ -472,7 +464,7 @@ public class Database : IDatabase
                 .Where("WHERE 1=1")
         );
     }
-
+    
     /// <summary>
     /// Generate a Paging List from a PageObject
     /// </summary>
@@ -482,15 +474,13 @@ public class Database : IDatabase
     /// <returns>A value based of the object type</returns>
     public List<T> FetchPage<T>(PageObject<T> page, SqlBuilder sql)
     {
-        if (_dbProvider is null)
-            return (List<T>)Enumerable.Empty<T>();
-
-        var pageSql = _dbProvider.BuildPageQuery<T>(page, sql);
+        var pageSql = _provider.BuildPageQuery<T>(page, sql);
 
         return (List<T>)(string.IsNullOrEmpty(pageSql.Query)
             ? Enumerable.Empty<T>()
             : Query<T>(pageSql).ToList()
         );
+    
     }
 
     /// <summary>
@@ -503,62 +493,6 @@ public class Database : IDatabase
     /// <returns>A value based of the object type</returns>
     public List<T> FetchPage<T>(PageObject<T> page, string sql, params object[] args)
         => FetchPage<T>(page, new SqlBuilder(sql, args));
-
-    #endregion
-
-    #region Audit Methods
-
-    /// <summary>
-    /// Methods that add a new Audit Event inside the database dedicated table
-    /// </summary>
-    /// <param name="executedDateTime">Indicates when the event was performed</param>
-    /// <param name="sqlQuery">Contains the actual performed query</param>
-    /// <param name="dbError">Contains an occured error</param>
-    private void NewAuditEvent(DateTime executedDateTime, string? sqlQuery, Exception? dbError)
-    {
-        SqlBuilder? sql;
-
-        // Check the if the required variables are correctly sets
-        if (!_dbAuditMode) return;
-
-        // Set a true the audit action flag
-        _auditExec = true;
-
-        // If the audit table not exists it will create it
-        if (!_auditTableChecked && _dbAuditMode)
-        {
-            sql = _dbProvider!.CheckIfAuditTableExists();
-            if (Execute(sql) == 0)
-            {
-                sql = _dbProvider!.CreateAuditTable();
-                Execute(sql);
-            }
-            _auditTableChecked = true;
-        }
-
-        // Insert the new event inside the audit table
-        sql = new SqlBuilder().InsertIntoTable(
-            "AuditEvents",
-            new object[]
-            {
-                "ExecutedOn",
-                "SqlQuery",
-                "IsError",
-                "ErrorMessage"
-            },
-            new object[]
-            {
-                executedDateTime,
-                sqlQuery ?? string.Empty,
-                dbError is null ? 0 : 1,
-                dbError is null ? string.Empty : dbError.Message
-            }
-        );
-        Execute(sql);
-
-        // Set a false the audit's execution flag
-        _auditExec = false;
-    }
 
     #endregion
 
