@@ -1,7 +1,7 @@
 ﻿namespace LothiumDB.Core.Enumerations;
 
 /// <summary>
-/// Indicates the Type of a Database's Provider
+/// Indicates the type of a Database's Provider
 /// </summary>
 public enum ProviderTypesEnum
 {

@@ -2,6 +2,7 @@
 using System.Linq;
 using System.Data;
 using LothiumDB.Core;
+using LothiumDB.Core.Enumerations;
 using LothiumDB.Core.Interfaces;
 using LothiumDB.Linq;
 using LothiumDB.Tools;
@@ -86,7 +87,7 @@ public class Database : IDatabase
     
     #endregion Constructors & Destructors
 
-    #region Object Management (Connection, Transaction, Command, Parameters)
+    #region Object Management (Connection, Transaction, Command, Parameters) & Core Operations (Scalar, Execute, Query)
 
     private void SafeOpenConnection()
     {
@@ -95,7 +96,7 @@ public class Database : IDatabase
         
         _connection.Open();
     }
-
+    
     private void SafeCloseConnection()
     {
         if (_transaction is not null) return;
@@ -125,16 +126,7 @@ public class Database : IDatabase
         _transaction.Dispose();
         _transaction = null;
     }
-
-    /// <summary>
-    /// Create a new db's command in safe
-    /// If the sql have some parameters they will be automatically added to the command
-    /// If the command need a transaction it will be automatically added to the command
-    /// </summary>
-    /// <param name="sql">Contains the query or stored procedure to be executed</param>
-    /// <param name="args">Contains all the variable/parameters required by the query or stored procedure</param>
-    /// <param name="commandType">Indicates what type of command must be created</param>
-    /// <returns>An object of type DbCommand based on the configuration's provider</returns>
+    
     private IDbCommand SafeCreateCommand(
         string sql,
         object[] args,
@@ -166,15 +158,175 @@ public class Database : IDatabase
 
         return command;
     }
+
+    private object? SafeScalarOperation<T>(DatabaseOperationTypesEnum operationType, string sql, object[] args)
+    {
+        object? result = null;
+
+        try
+        {
+            SafeOpenConnection();
+            
+            OnCommandExecution(operationType, sql, args);
+
+            using var cmd = SafeCreateCommand(sql, args, CommandType.Text);
+            
+            result = cmd.ExecuteScalar();
+        }
+        catch (Exception ex)
+        {
+            OnErrorOccured(operationType, ex);
+            
+            result = default;
+        }
+        finally
+        {
+            OnCommandExecuted(operationType, sql, args);
+            
+            SafeCloseConnection();
+        }
+
+        return result;
+    }
+    
+    private int SafeExecuteOperation(DatabaseOperationTypesEnum operationType, string sql, params object[] args)
+    {
+        var affectedRowOnCommand = 0;
+
+        try
+        {
+            SafeOpenConnection();
+            
+            OnCommandExecution(operationType, sql, args);
+
+            using var cmd = SafeCreateCommand(sql, args, CommandType.Text);
+            
+            affectedRowOnCommand = (int)cmd.ExecuteNonQuery();
+        }
+        catch (Exception ex)
+        {
+            OnErrorOccured(operationType, ex);
+            
+            affectedRowOnCommand = -1;
+        }
+        finally
+        {
+            OnCommandExecuted(operationType, sql, args);
+            
+            SafeCloseConnection();
+        }
+
+        return affectedRowOnCommand;
+    }
+    
+    private IEnumerable<T>? SafeQueryOperation<T>(DatabaseOperationTypesEnum operationType, string sql, params object[] args)
+    {
+        var result = new List<T>();
+
+        try
+        {
+            SafeOpenConnection();
+            
+            OnCommandExecution(operationType, sql, args);
+
+            // Check if exist a lothium object, if not will instance a new one
+            var type = typeof(T);
+            var mapper = new AutoMapper(type);
+            var props = AutoMapper.GetMappedProperties<T>();
+
+            using var cmd = SafeCreateCommand(sql, args, CommandType.Text);
+            
+            var cmdReader = cmd.ExecuteReader();
+
+            while (cmdReader.Read())
+            {
+                if (cmdReader.FieldCount <= 0) continue;
+
+                var item = Activator.CreateInstance(type);
+
+                ArgumentNullException.ThrowIfNull(mapper.TableData, nameof(mapper.TableData));
+                ArgumentNullException.ThrowIfNull(mapper.ColumnsData, nameof(mapper.ColumnsData));
+
+                foreach (var prop in props)
+                {
+                    var colInfo = Array.Find(mapper.ColumnsData.ToArray(),
+                        col => col.PocoObjectPropertyName == prop.Name);
+                    ArgumentNullException.ThrowIfNull(colInfo, nameof(colInfo));
+
+                    var value = (string.IsNullOrEmpty(colInfo.Name))
+                        ? cmdReader[colInfo.PocoObjectPropertyName]
+                        : cmdReader[colInfo.Name];
+
+                    value = DatabaseHelper.VerifyDBNullValue(colInfo, value);
+
+                    prop.SetValue(item, value, null);
+                    continue;
+                }
+
+                if (item is not null)
+                {
+                    result.Add((T)item);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            OnErrorOccured(operationType, ex);
+            
+            result = Enumerable
+                .Empty<T>()
+                .ToList();
+        }
+        finally
+        {
+            OnCommandExecuted(operationType, sql, args);
+            
+            SafeCloseConnection();
+        }
+
+        return result;
+    }
+    
+    /// <summary>
+    /// Perform a bunch of check to validate the passed sql
+    /// </summary>
+    /// <param name="operation">Contains the performed operation that raised the error</param>
+    /// <param name="sql">Contains the sql that will be executed into the provided database's instance</param>
+    /// <param name="parameters">Contains a set of parameters used by the sql</param>
+    protected virtual void OnCommandExecution(DatabaseOperationTypesEnum operation, string sql, object[] parameters)
+    {
+        //SqlBuilderException.ThrowIfSqlNullOrEmpty(sql.Query, sql.Params);
+        
+        if (string.IsNullOrEmpty(sql))
+            throw new ArgumentException("There is not a valid Sql query!");
+
+        if (sql.Contains(_provider.GetVariablePrefix()) && parameters.Length <= 0)
+            throw new ArgumentException("There are no provided parameters for the query!");
+    }
+    
+    /// <summary>
+    /// Contains the actual performed sql with all the associated parameters
+    /// </summary>
+    /// <param name="operation">Contains the performed operation that raised the error</param>
+    /// <param name="sql">Contains the sql executed into the provided database's instance</param>
+    /// <param name="parameters">Contains a set of parameters used by the sql</param>
+    protected virtual void OnCommandExecuted(DatabaseOperationTypesEnum operation,string sql, object[] parameters)
+    {
+        LastSql = new SqlBuilder(sql, parameters)
+            .ToFormatQuery();
+    }
+    
+    /// <summary>
+    /// Contains an actual error generated during the execution of a provided sql
+    /// </summary>
+    /// <param name="operation">Contains the performed operation that raised the error</param>
+    /// <param name="exception">Contains the generated error by the database's instance</param>
+    protected virtual void OnErrorOccured(DatabaseOperationTypesEnum operation, Exception exception)
+    {
+        LastError = exception;
+    }
     
     #endregion
-    
-    protected virtual void OnErrorOccured(Exception exception)
-    {
-        //
-        // ToDo: Define the base actions
-        //
-    }
     
     /// <summary>
     /// Start a new database's transaction for an open connection for the selected provider
@@ -207,37 +359,7 @@ public class Database : IDatabase
     /// <param name="args">Contains all the extra arguments of the query</param>
     /// <returns>A value based of the object type</returns>
     public object? Scalar<T>(string sql, object[] args)
-    {
-        object? result = null;
-
-        try
-        {
-            SqlBuilderException.ThrowIfSqlNullOrEmpty(sql, args);
-
-            LastSql = new SqlBuilder(sql, args).ToFormatQuery();
-
-            SafeOpenConnection();
-
-            using (var cmd = SafeCreateCommand(sql, args, CommandType.Text))
-            {
-                result = cmd.ExecuteScalar();
-            }
-        }
-        catch (Exception ex)
-        {
-            OnErrorOccured(ex);
-            
-            LastError = ex;
-            
-            result = default;
-        }
-        finally
-        {
-            SafeCloseTransaction(false);
-        }
-
-        return result;
-    }
+        => SafeScalarOperation<T>(DatabaseOperationTypesEnum.Scalar, sql, args);
 
     /// <summary>
     /// Invoke the DB Scalar command in the Database Instance and return a single value of a specific object type
@@ -246,8 +368,27 @@ public class Database : IDatabase
     /// <param name="sql">Contains the SQL object</param>
     /// <returns>A value based of the object type</returns>
     public object? Scalar<T>(SqlBuilder sql) 
-        => Scalar<T>(sql.Query, sql.Params);
+        => SafeScalarOperation<T>(DatabaseOperationTypesEnum.Scalar, sql.Query, sql.Params);
 
+    /// <summary>
+    /// Invoke the DB Scalar command in the Database Instance and return a single value of a specific object type
+    /// </summary>
+    /// <typeparam name="T">Contains the type for the returned object</typeparam>
+    /// <param name="sql">Contains the query command to be executed</param>
+    /// <param name="args">Contains all the extra arguments of the query</param>
+    /// <returns>A value based of the object type</returns>
+    public async Task<object?>? ScalarAsync<T>(string sql, object[] args)
+        => await Task.Run(() => SafeScalarOperation<T>(DatabaseOperationTypesEnum.ScalarAsync, sql, args));
+
+    /// <summary>
+    /// Invoke the DB Scalar command in the Database Instance and return a single value of a specific object type
+    /// </summary>
+    /// <typeparam name="T">Contains the type for the returned object</typeparam>
+    /// <param name="sql">Contains the SQL object</param>
+    /// <returns>A value based of the object type</returns>
+    public async Task<object?>? ScalarAsync<T>(SqlBuilder sql) 
+        => await Task.Run(() => SafeScalarOperation<T>(DatabaseOperationTypesEnum.ScalarAsync, sql.Query, sql.Params));
+    
     #endregion
 
     #region Execute Command
@@ -259,35 +400,7 @@ public class Database : IDatabase
     /// <param name="args">Contains all the extra arguments of the query</param>
     /// <returns>An int value that count all the affected table rows</returns>
     public int Execute(string sql, params object[] args)
-    {
-        int affectedRowOnCommand = 0;
-
-        try
-        {
-            SqlBuilderException.ThrowIfSqlNullOrEmpty(sql, args);
-
-            LastSql = new SqlBuilder(sql, args).ToFormatQuery();
-
-            SafeOpenConnection();
-
-            using (var cmd = SafeCreateCommand(sql, args, CommandType.Text))
-            {
-                affectedRowOnCommand = cmd.ExecuteNonQuery();
-            }
-        }
-        catch (Exception ex)
-        {
-            OnErrorOccured(ex);
-            LastError = ex;
-            affectedRowOnCommand = -1;
-        }
-        finally
-        {
-            SafeCloseConnection();
-        }
-
-        return affectedRowOnCommand;
-    }
+        => SafeExecuteOperation(DatabaseOperationTypesEnum.ExecuteQuery, sql, args);
 
     /// <summary>
     /// Invoke the DB NonQuery command in the Database Instance and return the number of completed operations
@@ -295,8 +408,25 @@ public class Database : IDatabase
     /// <param name="sql">Contains the SQL object</param>
     /// <returns>An int value that count all the affected table rows</returns>
     public int Execute(SqlBuilder sql)
-        => Execute(sql.Query, sql.Params);
+        => SafeExecuteOperation(DatabaseOperationTypesEnum.ExecuteQuery, sql.Query, sql.Params);
 
+    /// <summary>
+    /// Invoke the DB NonQuery command in the Database Instance and return the number of completed operations
+    /// </summary>
+    /// <param name="sql">Contains the query command to be executed</param>
+    /// <param name="args">Contains all the extra arguments of the query</param>
+    /// <returns>An int value that count all the affected table rows</returns>
+    public async Task<int> ExecuteAsync(string sql, params object[] args)
+        => await Task.Run(() => SafeExecuteOperation(DatabaseOperationTypesEnum.ExecuteQueryAsync, sql, args));
+
+    /// <summary>
+    /// Invoke the DB NonQuery command in the Database Instance and return the number of completed operations
+    /// </summary>
+    /// <param name="sql">Contains the SQL object</param>
+    /// <returns>An int value that count all the affected table rows</returns>
+    public async Task<int> ExecuteAsync(SqlBuilder sql)
+        => await Task.Run(() => SafeExecuteOperation(DatabaseOperationTypesEnum.ExecuteQueryAsync, sql.Query, sql.Params));
+    
     #endregion
 
     #region Query Command
@@ -309,68 +439,7 @@ public class Database : IDatabase
     /// <param name="args">Contains all the extra arguments of the query</param>
     /// <returns>A value based of the object type</returns>
     public IEnumerable<T>? Query<T>(string sql, params object[] args)
-    {
-        var result = new List<T>();
-
-        try
-        {
-            SqlBuilderException.ThrowIfSqlNullOrEmpty(sql, args);
-
-            LastSql = new SqlBuilder(sql, args).ToFormatQuery();
-
-            // Check if exist a lothium object, if not will instance a new one
-            var type = typeof(T);
-            var mapper = new AutoMapper(type);
-            var props = AutoMapper.GetMappedProperties<T>();
-
-            SafeOpenConnection();
-
-            using (var cmd = SafeCreateCommand(sql, args, CommandType.Text))
-            {
-                var cmdReader = cmd.ExecuteReader();
-
-                while (cmdReader.Read())
-                {
-                    if (cmdReader.FieldCount <= 0) continue;
-
-                    var item = Activator.CreateInstance(type);
-
-                    ArgumentNullException.ThrowIfNull(mapper.TableData, nameof(mapper.TableData));
-                    ArgumentNullException.ThrowIfNull(mapper.ColumnsData, nameof(mapper.ColumnsData));
-
-                    foreach (var prop in props)
-                    {
-                        var colInfo = Array.Find(mapper.ColumnsData.ToArray(),
-                            col => col.PocoObjectPropertyName == prop.Name);
-                        ArgumentNullException.ThrowIfNull(colInfo, nameof(colInfo));
-
-                        var value = (string.IsNullOrEmpty(colInfo.Name))
-                            ? cmdReader[colInfo.PocoObjectPropertyName]
-                            : cmdReader[colInfo.Name];
-
-                        value = DatabaseHelper.VerifyDBNullValue(colInfo, value);
-
-                        prop.SetValue(item, value, null);
-                        continue;
-                    }
-
-                    if (item is not null) result.Add((T)item);
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            OnErrorOccured(ex);
-            LastError = ex;
-            result = null;
-        }
-        finally
-        {
-            SafeCloseConnection();
-        }
-
-        return result;
-    }
+        => SafeQueryOperation<T>(DatabaseOperationTypesEnum.Query, sql, args);
 
     /// <summary>
     /// Invoke the DB Query command in the Database Instance and cast it to a specific object type
@@ -379,8 +448,27 @@ public class Database : IDatabase
     /// <param name="sql">Contains the SQL object</param>
     /// <returns>A value based of the object type</returns>
     public IEnumerable<T>? Query<T>(SqlBuilder sql) 
-        => Query<T>(sql.Query, sql.Params);
+        => SafeQueryOperation<T>(DatabaseOperationTypesEnum.Query, sql.Query, sql.Params);
 
+    /// <summary>
+    /// Invoke the DB Query command in the Database Instance and cast it to a specific object type
+    /// </summary>
+    /// <typeparam name="T">Contains the type for the returned object</typeparam>
+    /// <param name="sql">Contains the query command to be executed</param>
+    /// <param name="args">Contains all the extra arguments of the query</param>
+    /// <returns>A value based of the object type</returns>
+    public async Task<IEnumerable<T>?>? QueryAsync<T>(string sql, params object[] args)
+        => await Task.Run(() => SafeQueryOperation<T>(DatabaseOperationTypesEnum.Query, sql, args));
+
+    /// <summary>
+    /// Invoke the DB Query command in the Database Instance and cast it to a specific object type
+    /// </summary>
+    /// <typeparam name="T">Contains the type for the returned object</typeparam>
+    /// <param name="sql">Contains the SQL object</param>
+    /// <returns>A value based of the object type</returns>
+    public async Task<IEnumerable<T>?>? QueryAsync<T>(SqlBuilder sql) 
+        => await Task.Run(() => SafeQueryOperation<T>(DatabaseOperationTypesEnum.Query, sql.Query, sql.Params));
+    
     #endregion
 
     #region FindAll Command
@@ -399,12 +487,7 @@ public class Database : IDatabase
     /// <param name="sql">Contains the SQL object</param>
     /// <returns>A value based of the object type</returns>
     public List<T>? FindAll<T>(SqlBuilder sql)
-    {
-        var result = Query<T>(sql);
-        return (result is null)
-            ? null
-            : result.ToList();
-    }
+        => Query<T>(sql)?.ToList();
 
     /// <summary>
     /// Select all the elements inside a table with a specify Sql query
