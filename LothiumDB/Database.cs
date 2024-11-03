@@ -17,7 +17,7 @@ namespace LothiumDB;
 public class Database : IDatabase
 {
     private bool _disposed = false;
-
+    
     private readonly DatabaseProvider _provider;
     private readonly IDbConnection _connection;
     private IDbTransaction? _transaction;
@@ -87,7 +87,7 @@ public class Database : IDatabase
     
     #endregion Constructors & Destructors
 
-    #region Object Management (Connection, Transaction, Command, Parameters) & Core Operations (Scalar, Execute, Query)
+    #region Object Management & Core Operations
 
     private void SafeOpenConnection()
     {
@@ -327,6 +327,8 @@ public class Database : IDatabase
     }
     
     #endregion
+
+    #region Transaction Methods
     
     /// <summary>
     /// Start a new database's transaction for an open connection for the selected provider
@@ -336,6 +338,13 @@ public class Database : IDatabase
         => SafeOpenTransaction();
 
     /// <summary>
+    /// Start a new database's transaction for an open connection for the selected provider
+    /// if the connection is not set or open will return an argument null exception
+    /// </summary>
+    public async Task BeginTransactionAsync() 
+        => await Task.Run(SafeOpenTransaction);
+    
+    /// <summary>
     /// Revert all the operations executed during the active database's transaction for the open connection for the selected provider
     /// If there is any open transaction it will simply exit the method
     /// </summary>
@@ -343,12 +352,28 @@ public class Database : IDatabase
         => SafeCloseTransaction(true);
 
     /// <summary>
+    /// Revert all the operations executed during the active database's transaction for the open connection for the selected provider
+    /// If there is any open transaction it will simply exit the method
+    /// </summary>
+    public async Task RollbackTransactionAsync()
+        => await Task.Run(() => SafeCloseTransaction(true));
+    
+    /// <summary>
     /// Close the active database's transaction for the open connection for the selected provider
     /// If there is any open transaction it will simply exit the method
     /// </summary>
     public void CommitTransaction()
         => SafeCloseTransaction(false);
 
+    /// <summary>
+    /// Close the active database's transaction for the open connection for the selected provider
+    /// If there is any open transaction it will simply exit the method
+    /// </summary>
+    public async Task CommitTransactionAsync()
+        => await Task.Run(() => SafeCloseTransaction(false));
+    
+    #endregion
+    
     #region  Scalar Command
 
     /// <summary>
