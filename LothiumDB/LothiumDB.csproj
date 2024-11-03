@@ -32,6 +32,7 @@
     <None Remove="Cores\" />
     <None Remove="Microsoft.Data.SqlClient" />
     <None Remove="Data\**" />
+    <None Remove="Providers\**" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="MySql.Data" Version="8.3.0" />
@@ -54,9 +55,13 @@
     <Compile Remove="Core\IDatabaseConnectionObject.cs" />
     <Compile Remove="Interfaces\IDatabaseConnectionObject.cs" />
     <Compile Remove="Data\**" />
+    <Compile Remove="Providers\**" />
+    <Compile Remove="Core\DatabaseTransaction.cs" />
+    <Compile Remove="Core\Interfaces\IProvider.cs" />
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Remove="Data\**" />
+    <EmbeddedResource Remove="Providers\**" />
   </ItemGroup>
   <ItemGroup>
     <None Include="LothiumDB\LothiumDB.png">

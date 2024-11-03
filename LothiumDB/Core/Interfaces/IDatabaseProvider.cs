@@ -1,7 +1,7 @@
 using LothiumDB.Core.Enumerations;
 using LothiumDB.Tools;
 
-namespace LothiumDB;
+namespace LothiumDB.Core.Interfaces;
 
 public interface IDatabaseProvider
 {

@@ -1,13 +1,13 @@
 using System.Data;
 using LothiumDB.Core.Enumerations;
+using LothiumDB.Core.Interfaces;
 using LothiumDB.Exceptions;
-using Npgsql;
 
 namespace LothiumDB;
 
 public class DatabaseBuilder : IDatabaseBuilder
 {
-    private DatabaseConfiguration _configuration = new DatabaseConfiguration();
+    private readonly DatabaseConfiguration _configuration = new DatabaseConfiguration();
     
     /// <summary>
     /// Initialize a new builder that will be used to create a new instance the Database class

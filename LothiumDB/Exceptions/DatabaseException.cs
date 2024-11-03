@@ -64,5 +64,5 @@ internal class DatabaseException : Exception
 
     [DoesNotReturn]
     private static void ThrowException(string? errorMessage)
-    => throw new DatabaseException(errorMessage);
+        => throw new DatabaseException(errorMessage);
 }

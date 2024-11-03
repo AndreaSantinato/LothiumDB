@@ -1,11 +1,9 @@
-﻿using System.Configuration.Provider;
-using System.Data;
-using System.Data.Common;
+﻿using System.Data;
 using System.Text.RegularExpressions;
+using LothiumDB.Tools;
+using LothiumDB.Exceptions;
 using LothiumDB.Core.Interfaces;
 using LothiumDB.Core.PocoDataInfo;
-using LothiumDB.Exceptions;
-using LothiumDB.Tools;
 
 namespace LothiumDB.Core;
 
@@ -28,78 +26,6 @@ internal static class DatabaseHelper
             _ => false
         };
     }
-    
-    public static void OpenConnectionSafe(IDbConnection connection)
-    {
-        if (CheckConnectionStatus(connection))
-            return;
-        
-        connection.Open();
-    }
-
-    public static void CloseConnectionSafe(IDbConnection connection, bool keepOpen = false)
-    {
-        if (keepOpen)
-        {
-            OpenConnectionSafe(connection);
-
-            return;
-        }
-
-        if (CheckConnectionStatus(connection))
-        {
-            connection.Close();
-        }
-    }
-
-    public static void CreateTransactionSafe(IDbConnection connection, out IDbTransaction transaction)
-    {
-        transaction = connection.BeginTransaction();
-    }
-
-    public static void CloseTransactionSafe(IDbTransaction transaction, bool rollback = false)
-    {
-        if (rollback)
-            transaction?.Rollback();
-        else
-            transaction?.Commit();
-        
-        transaction?.Dispose();
-    }
-    
-    
-    
-    
-    
-    /// <summary>
-    /// Open a new db's connection in safe
-    /// </summary>
-    /// <param name="connection">Contains the connection object to be opended</param>
-    /// <param name="configuration">Contains the configuration of the db instance</param>
-    public static void OpenSafeConnection(IProvider provider, IDbConnection? connection)
-    {
-        connection ??= provider.CreateConnection();
-
-        if (ConnectionState.Closed == connection.State)
-            connection.Open();
-    }
-
-    /// <summary>
-    /// Close an existing db's connection in safe if the provider doesn't want it to be keeped open
-    /// </summary>
-    /// <param name="connection">Contains the connection object to be opended</param>
-    /// <param name="configuration">Contains the configuration of the db instance</param>
-    /// <param name="keepOpen">Indicate if the connection need to be keeped open</param>
-    public static void CloseSafeConnection(IProvider provider, IDbConnection? connection, bool keepOpen = false)
-    {
-        if (connection is null) return;
-
-        if (keepOpen)
-            OpenSafeConnection(provider, connection);
-
-        if ((ConnectionState.Open == connection.State) && !keepOpen)
-            connection.Close();
-    }
 
     /// <summary>
     /// Retrieve all the parameter's variables inside a sql query
@@ -121,9 +47,10 @@ internal static class DatabaseHelper
     /// </summary>
     /// <param name="value"></param>
     /// <param name="columnData"></param>
-    public static object? VerifyDBNullValue(PocoColumnData columnData, object? value)
+    public static object? VerifyDbNullValue(PocoColumnData columnData, object? value)
     {
-        if (value != DBNull.Value) return value;
+        if (value != DBNull.Value) 
+            return value;
 
         if (!columnData.Nullable)
         {

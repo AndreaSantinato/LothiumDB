@@ -257,7 +257,7 @@ public class Database : IDatabase
                         ? cmdReader[colInfo.PocoObjectPropertyName]
                         : cmdReader[colInfo.Name];
 
-                    value = DatabaseHelper.VerifyDBNullValue(colInfo, value);
+                    value = DatabaseHelper.VerifyDbNullValue(colInfo, value);
 
                     prop.SetValue(item, value, null);
                     continue;
