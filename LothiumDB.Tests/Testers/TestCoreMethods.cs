@@ -7,11 +7,13 @@ public static class TestCoreMethods
 {
     public static void ExecuteTests(Database database)
     {
+        database.OpenConnection();
+        
         var rows = database.Execute(
             new SqlBuilder()
                 .Append("DELETE FROM TestTable")
         );
-        ;
+        
         rows = database.Execute(
             new SqlBuilder().Append("""
                                     
@@ -39,5 +41,7 @@ public static class TestCoreMethods
                 .Select()
                 .From("TestTable")
         );
+        
+        database.CloseConnection();
     }
 }

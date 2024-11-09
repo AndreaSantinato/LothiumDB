@@ -58,6 +58,7 @@
     <Compile Remove="Providers\**" />
     <Compile Remove="Core\DatabaseTransaction.cs" />
     <Compile Remove="Core\Interfaces\IProvider.cs" />
+    <Compile Remove="Core\Interfaces\IDatabaseCore.cs" />
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Remove="Data\**" />

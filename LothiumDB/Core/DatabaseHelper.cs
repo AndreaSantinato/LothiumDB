@@ -1,4 +1,5 @@
 ﻿using System.Data;
+using System.Data.Common;
 using System.Text.RegularExpressions;
 using LothiumDB.Tools;
 using LothiumDB.Exceptions;
@@ -13,7 +14,12 @@ namespace LothiumDB.Core;
 /// </summary>
 internal static class DatabaseHelper
 {
-    public static bool CheckConnectionStatus(IDbConnection connection)
+    /// <summary>
+    /// Return a boolean result based on the current connection object status
+    /// </summary>
+    /// <param name="connection">Contains the connection's object to use</param>
+    /// <returns>True = Connection Open; False = Connection Closed</returns>
+    internal static bool CheckConnectionStatus(IDbConnection connection)
     {
         return connection.State switch
         {
@@ -27,6 +33,232 @@ internal static class DatabaseHelper
         };
     }
 
+    /// <summary>
+    /// Create a new database's command that will be used to perform operations inside
+    /// the chosen database's instance
+    /// </summary>
+    /// <param name="provider"></param>
+    /// <param name="connection">Contains the database's connection object to use</param>
+    /// <param name="transaction">Contains an optional created transaction</param>
+    /// <param name="commandType">Contains the type of the command to create</param>
+    /// <param name="commandTimeout">Contains the maximum time for the command to execute before raise an error</param>
+    /// <param name="sql">Contains the actual query / stored procedure to execute</param>
+    /// <param name="args">Contains a collection of parameters to use alongside the query / stored procedure to execute</param>
+    /// <returns>A DbCommand object related to the type of the provided connection's object</returns>
+    /// <exception cref="DatabaseException">Raise an error the provided sql contains variables but the parameter's collection is empty</exception>
+    internal static IDbCommand CreateDatabaseCommand(
+        IDatabaseProvider provider,
+        IDbConnection connection,
+        IDbTransaction? transaction,
+        CommandType commandType,
+        int commandTimeout,
+        string sql,
+        object[] args
+    )
+    {
+        // Check if the minimum required variables are correctly sets
+        DatabaseException.ThrowIfNullOrEmpty(sql);
+        if (sql.Contains('@') && args.Length.Equals(0))
+            throw new DatabaseException("The provided SQL contains variables but the actual parameters were not provided!");
+        
+        // Create the new command
+        var command = connection.CreateCommand();
+        
+        command.Transaction = transaction;
+        command.CommandText = sql;
+        command.CommandType = commandType;
+        command.CommandTimeout = commandTimeout;
+
+        if (args.Length != 0)
+        {
+            DatabaseHelper.AddParamsToDatabaseCommand(
+                provider,
+                ref command,
+                new SqlBuilder(sql, args)
+            );
+        }
+
+        DatabaseException.ThrowIfNull(command);
+
+        return command;
+    }
+
+    /// <summary>
+    /// Perform a bunch of checks to the provided database's command
+    /// </summary>
+    /// <param name="command">Contains the command to check and validate</param>
+    /// <exception cref="DatabaseException">Raise an error if the command don't pass one or more checks</exception>
+    private static void CheckDatabaseCommand(IDbCommand command)
+    {
+        if (command == null)
+            throw new DatabaseException("No database command provided!");
+
+        if (string.IsNullOrWhiteSpace(command.CommandText))
+            throw new DatabaseException("No SQL command provided!");
+
+        if (command.CommandText.Contains('@') && command.Parameters.Count == 0)
+            throw new DatabaseException("The SQL command contains variables but no parameters provided!");
+    }
+    
+    private static IEnumerable<T> RetrieveAndMapData<T>(IDataReader reader)
+    {
+        var result = new List<T>();
+        
+        var type = typeof(T);
+        var mapper = new AutoMapper(type);
+        var props = AutoMapper.GetMappedProperties<T>();
+        
+        while (reader.Read())
+        {
+            if (reader.FieldCount <= 0) continue;
+
+            var item = Activator.CreateInstance(type);
+
+            ArgumentNullException.ThrowIfNull(mapper.TableData, nameof(mapper.TableData));
+            ArgumentNullException.ThrowIfNull(mapper.ColumnsData, nameof(mapper.ColumnsData));
+
+            foreach (var prop in props)
+            {
+                var colInfo = Array.Find(mapper.ColumnsData.ToArray(),
+                    col => col.PocoObjectPropertyName == prop.Name);
+                ArgumentNullException.ThrowIfNull(colInfo, nameof(colInfo));
+
+                var value = (string.IsNullOrEmpty(colInfo.Name))
+                    ? reader[colInfo.PocoObjectPropertyName]
+                    : reader[colInfo.Name];
+
+                value = DatabaseHelper.VerifyDbNullValue(colInfo, value);
+
+                prop.SetValue(item, value, null);
+                continue;
+            }
+
+            if (item is not null)
+            {
+                result.Add((T)item);
+            }
+        }
+
+        return result;
+    }
+    
+    /// <summary>
+    /// Perform a scalar command and provided a set of checks to the final returned result
+    /// </summary>
+    /// <typeparam name="T">Contains the type of the returned object</typeparam>
+    /// <param name="command">Contains the database command to perform</param>
+    /// <returns>An object of the </returns>
+    internal static object? PerformScalarCommand<T>(IDbCommand command)
+    {
+        CheckDatabaseCommand(command);
+        
+        var value = command.ExecuteScalar();
+
+        DatabaseHelper.HandleScalarDbNullConversion<T>(
+            value, 
+            out var result
+        );
+        
+        return result;
+    }
+    
+    /// <summary>
+    /// Perform an asynchronous scalar command and provided a set of checks to the final returned result
+    /// </summary>
+    /// <typeparam name="T">Contains the type of the returned object</typeparam>
+    /// <param name="command">Contains the database command to perform</param>
+    /// <param name="cancellationToken">Contains a token to cancel the current operation</param>
+    /// <returns>An object of the </returns>
+    internal static async Task<object?> PerformScalarCommandAsync<T>(IDbCommand command, CancellationToken cancellationToken)
+    {
+        CheckDatabaseCommand(command);
+
+        var value = (command is DbCommand dbCommand)
+            ? await dbCommand.ExecuteScalarAsync(cancellationToken)
+            : command.ExecuteScalar();
+
+        DatabaseHelper.HandleScalarDbNullConversion<T>(
+            value, 
+            out var result
+        );
+        
+        return result;
+    }
+    
+    /// <summary>
+    /// Perform an execute command and return the number of affected rows
+    /// </summary>
+    /// <param name="command">Contains the database command to perform</param>
+    /// <returns>The number of rows affected by the database's command</returns>
+    internal static int PerformExecuteCommand(IDbCommand command)
+    {
+        CheckDatabaseCommand(command);
+        
+        return command.ExecuteNonQuery();
+    }
+    
+    /// <summary>
+    /// Perform an asynchronous execute command and return the number of affected rows
+    /// </summary>
+    /// <param name="command">Contains the database command to perform</param>
+    /// <param name="cancellationToken">Contains a token to cancel the current operation</param>
+    /// <returns>The number of rows affected by the database's command</returns>
+    internal static async Task<int> PerformExecuteCommand(IDbCommand command, CancellationToken cancellationToken)
+    {
+        CheckDatabaseCommand(command);
+        
+        return (command is DbCommand dbCommand)
+            ? await dbCommand.ExecuteNonQueryAsync(cancellationToken)
+            : command.ExecuteNonQuery();
+    }
+
+    /// <summary>
+    /// Perform a query command and return a collection of typed objects
+    /// </summary>
+    /// <typeparam name="T">Contains the type of the collection's object</typeparam>
+    /// <param name="command">Contains the database command to perform</param>
+    /// <returns>A collection of object automatically mapped based on a specified model</returns>
+    internal static IEnumerable<T> PerformQueryCommand<T>(IDbCommand command)
+    {
+        CheckDatabaseCommand(command);
+        
+        return RetrieveAndMapData<T>(command.ExecuteReader());
+    }
+    
+    /// <summary>
+    /// Perform an asynchronous query command and return a collection of typed objects
+    /// </summary>
+    /// <typeparam name="T">Contains the type of the collection's object</typeparam>
+    /// <param name="command">Contains the database command to perform</param>
+    /// <param name="cancellationToken">Contains a token to cancel the current operation</param>
+    /// <returns>A collection of object automatically mapped based on a specified model</returns>
+    internal static async Task<IEnumerable<T>> PerformQueryCommandAsync<T>(IDbCommand command, CancellationToken cancellationToken)
+    {
+        CheckDatabaseCommand(command);
+        
+        return RetrieveAndMapData<T>(
+            (command is DbCommand dbCommand)
+                ? await dbCommand.ExecuteReaderAsync(cancellationToken)
+                : command.ExecuteReader()
+        );
+    }
+    
+    /// <summary>
+    /// Convert the result object into a valid return type  
+    /// </summary>
+    /// <typeparam name="T">Contains the type of the final returned object</typeparam>
+    /// <param name="value">Contains the object to check and convert if necessary</param>
+    /// <param name="result">Contains the final converted result object</param>
+    private static void HandleScalarDbNullConversion<T>(object? value, out object? result)
+    {
+        var returnType = typeof(T);
+        var underlyingType = Nullable.GetUnderlyingType(returnType);
+                
+        result = (underlyingType != null && (value == null || value == DBNull.Value))
+            ? default(T)
+            : Convert.ChangeType(value, underlyingType ?? returnType);
+    }
+    
     /// <summary>
     /// Retrieve all the parameter's variables inside a sql query
     /// </summary>
@@ -47,7 +279,7 @@ internal static class DatabaseHelper
     /// </summary>
     /// <param name="value"></param>
     /// <param name="columnData"></param>
-    public static object? VerifyDbNullValue(PocoColumnData columnData, object? value)
+    internal static object? VerifyDbNullValue(PocoColumnData columnData, object? value)
     {
         if (value != DBNull.Value) 
             return value;
@@ -73,7 +305,7 @@ internal static class DatabaseHelper
     /// <param name="provider">Contains the loaded database provider</param>
     /// <param name="command">Contains the database command to add the parameters</param>
     /// <param name="sql">Contains the sql query</param>
-    public static void AddParamsToDatabaseCommand(IDatabaseProvider provider, ref IDbCommand command, SqlBuilder sql)
+    private static void AddParamsToDatabaseCommand(IDatabaseProvider provider, ref IDbCommand command, SqlBuilder sql)
     {
         var paramsList = new Dictionary<string, object>();
 

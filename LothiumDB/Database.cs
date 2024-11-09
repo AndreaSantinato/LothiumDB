@@ -1,9 +1,9 @@
 ﻿using System;
-using System.Linq;
 using System.Data;
 using LothiumDB.Core;
 using LothiumDB.Core.Enumerations;
 using LothiumDB.Core.Interfaces;
+using LothiumDB.EventHandlers;
 using LothiumDB.Linq;
 using LothiumDB.Tools;
 using LothiumDB.Exceptions;
@@ -19,8 +19,10 @@ public class Database : IDatabase
     private bool _disposed = false;
     
     private readonly DatabaseProvider _provider;
-    private readonly IDbConnection _connection;
+    private IDbConnection _connection;
     private IDbTransaction? _transaction;
+    private int _connectionDepth;
+    private int _transactionDepth;
     private readonly int _commandTimeout;
     
     #region Properties
@@ -41,8 +43,87 @@ public class Database : IDatabase
     /// </summary>
     public Exception? LastError { get; private set; }
 
+    /// <summary>
+    /// Indicates if the connection must be kept open
+    /// </summary>
+    public bool KeepConnectionOpen { get; set; }
+
     #endregion
 
+    #region Event Handlers
+    
+    /// <summary>
+    /// Pre-Initialization of a database's command 
+    /// </summary>
+    public event EventHandler<DatabaseCommandEventArgs>? CommandExecuting;
+    
+    /// <summary>
+    /// Post-Execution of a database's command
+    /// </summary>
+    public event EventHandler<DatabaseCommandEventArgs>? CommandCompleted;
+
+    /// <summary>
+    /// Equals to an Exception Throwing Error
+    /// </summary>
+    public event EventHandler<DatabaseExceptionEventArgs>? ExceptionRaised; 
+    
+    /// <summary>
+    /// Performed before the execution of a database command operation
+    /// and contains all the related information.
+    /// </summary>
+    /// <param name="operation">Contains the performed operation that raised the error</param>
+    /// <param name="sql">Contains the sql that will be executed into the provided database's instance</param>
+    /// <param name="parameters">Contains a set of parameters used by the sql</param>
+    protected virtual void OnCommandExecution(DatabaseOperationTypesEnum operation, string sql, object[] parameters)
+    {
+        if (string.IsNullOrEmpty(sql))
+            throw new ArgumentException("There is not a valid Sql query!");
+
+        if (sql.Contains(_provider.GetVariablePrefix()) && parameters.Length <= 0)
+            throw new ArgumentException("There are no provided parameters for the query!");
+        
+        CommandExecuting?.Invoke(
+            this,
+            new DatabaseCommandEventArgs(operation, sql, parameters)
+        );
+    }
+    
+    /// <summary>
+    /// Performed after the execution of a database command operation
+    /// and contains all the related information
+    /// </summary>
+    /// <param name="operation">Contains the performed operation that raised the error</param>
+    /// <param name="sql">Contains the sql executed into the provided database's instance</param>
+    /// <param name="parameters">Contains a set of parameters used by the sql</param>
+    /// <returns>The executed query with parameters inside a formatted string</returns>
+    protected virtual string OnCommandCompleted(DatabaseOperationTypesEnum operation,string sql, object[] parameters)
+    {
+        CommandCompleted?.Invoke(
+            this, 
+            new DatabaseCommandEventArgs(operation, sql, parameters)
+        );
+        
+        return new SqlBuilder(sql, parameters).ToFormatQuery();
+    }
+    
+    /// <summary>
+    /// Contains an actual error generated during the execution of a provided sql
+    /// </summary>
+    /// <param name="operation">Contains the performed operation that raised the error</param>
+    /// <param name="exception">Contains the generated error by the database's instance</param>
+    /// <returns>The executed query with parameters inside a formatted string</returns>
+    protected virtual Exception OnGeneratedError(DatabaseOperationTypesEnum operation, Exception exception)
+    {
+        ExceptionRaised?.Invoke(
+            this,
+            new DatabaseExceptionEventArgs(operation, exception)
+        );
+        
+        return exception;
+    }
+    
+    #endregion
+    
     #region Constructors & Destructors
 
     /// <summary>
@@ -59,9 +140,14 @@ public class Database : IDatabase
         if (configuration.CommandTimeout <= 0)
             throw new ArgumentException("The command timeout must be greater than zero!");
         
-        _provider = new DatabaseProvider(configuration.Type, (string)configuration.VariablePrefix);
+        _provider = new DatabaseProvider(
+            configuration.Type,
+            (string)configuration.VariablePrefix
+        );
         _connection = configuration.Connection;
+        _connectionDepth = 0;
         _transaction = null;
+        _transactionDepth = 0;
         _commandTimeout = (int)configuration.CommandTimeout;
         
         LastError = null;
@@ -86,295 +172,281 @@ public class Database : IDatabase
     }
     
     #endregion Constructors & Destructors
-
-    #region Object Management & Core Operations
-
-    private void SafeOpenConnection()
-    {
-        if (_transaction is not null) return;
-        if (DatabaseHelper.CheckConnectionStatus(_connection)) return;
-        
-        _connection.Open();
-    }
     
-    private void SafeCloseConnection()
+    #region Connection & Transaction Methods
+    
+    /// <summary>
+    /// Open a new connection to the chosen database's instance
+    /// </summary>
+    public void OpenConnection()
     {
+        if (_connectionDepth == 0)
+        {
+            if (_transaction is not null) return;
+            if (DatabaseHelper.CheckConnectionStatus(_connection)) return;
+            
+            if (_connection.State == ConnectionState.Broken)
+                _connection.Close();
+
+            if (_connection.State == ConnectionState.Closed)
+                _connection.Open();
+
+            if (KeepConnectionOpen)
+                _connectionDepth++;
+        }
+
+        _connectionDepth++;
+    }
+
+    /// <summary>
+    /// Close an existing opened connection to the chosen database's instance
+    /// </summary>
+    public void CloseConnection()
+    {
+        if (_connectionDepth > 0)
+            _connectionDepth--;
+
+        if (_connectionDepth != 0) return;
         if (_transaction is not null) return;
         if (!DatabaseHelper.CheckConnectionStatus(_connection)) return;
-        
+            
         _connection.Close();
     }
-
-    private void SafeOpenTransaction()
+    
+    /// <summary>
+    /// Start a new transaction for an open connection for the selected provider
+    /// if the connection is not set or open will return an argument null exception
+    /// </summary>
+    public void BeginTransaction()
+        => BeginTransaction(IsolationLevel.Unspecified);
+    
+    /// <summary>
+    /// Start a new transaction using a specific isolation level for an open connection for the selected provider
+    /// if the connection is not set or open will return an argument null exception
+    /// </summary>
+    public void BeginTransaction(IsolationLevel isolationLevel)
     {
-        if (_transaction is not null)
-            throw new DatabaseException("There is an existing open transaction!!");
+        if (_transactionDepth == 0)
+        {
+            if (_transaction is not null)
+                throw new DatabaseException("There is an existing open transaction!!");
+            
+            OpenConnection();
+            
+            _transaction = _connection.BeginTransaction(isolationLevel);
+        }
         
-        _transaction = _connection.BeginTransaction();
+        _transactionDepth++;
     }
-
-    private void SafeCloseTransaction(bool rollback)
+    
+    private void SafeCloseAndCleanUpTransaction(bool rollback)
     {
-        if (_transaction is null)
-            throw new DatabaseException("There is no open transaction to close!");
-
+        if (_transactionDepth != 1) 
+            return;
+        
         if (rollback)
-            _transaction.Rollback();
+            _transaction?.Rollback();
         else
-            _transaction.Commit();
+            _transaction?.Commit();
 
-        _transaction.Dispose();
+        _transaction?.Dispose();
         _transaction = null;
-    }
-    
-    private IDbCommand SafeCreateCommand(
-        string sql,
-        object[] args,
-        CommandType commandType
-    )
-    {
-        // Check if the minimum required variables are correctly sets
-        DatabaseException.ThrowIfNullOrEmpty(sql);
-        if (sql.Contains('@') && args.Length.Equals(0))
-            throw new DatabaseException("The provided SQL contains variables but the actual parameters were not provided!");
-
-        // Create the new command
-        var command = _connection.CreateCommand();
         
-        command.Transaction = _transaction;
-        command.CommandText = sql;
-        command.CommandType = commandType;
-
-        if (args.Length != 0)
-        {
-            DatabaseHelper.AddParamsToDatabaseCommand(
-                _provider,
-                ref command,
-                new SqlBuilder(sql, args)
-            );
-        }
-
-        DatabaseException.ThrowIfNull(command);
-
-        return command;
+        CloseConnection();
+            
+        _transactionDepth--;
     }
-
-    private object? SafeScalarOperation<T>(DatabaseOperationTypesEnum operationType, string sql, object[] args)
-    {
-        object? result = null;
-
-        try
-        {
-            SafeOpenConnection();
-            
-            OnCommandExecution(operationType, sql, args);
-
-            using var cmd = SafeCreateCommand(sql, args, CommandType.Text);
-            
-            result = cmd.ExecuteScalar();
-        }
-        catch (Exception ex)
-        {
-            OnErrorOccured(operationType, ex);
-            
-            result = default;
-        }
-        finally
-        {
-            OnCommandExecuted(operationType, sql, args);
-            
-            SafeCloseConnection();
-        }
-
-        return result;
-    }
-    
-    private int SafeExecuteOperation(DatabaseOperationTypesEnum operationType, string sql, params object[] args)
-    {
-        var affectedRowOnCommand = 0;
-
-        try
-        {
-            SafeOpenConnection();
-            
-            OnCommandExecution(operationType, sql, args);
-
-            using var cmd = SafeCreateCommand(sql, args, CommandType.Text);
-            
-            affectedRowOnCommand = (int)cmd.ExecuteNonQuery();
-        }
-        catch (Exception ex)
-        {
-            OnErrorOccured(operationType, ex);
-            
-            affectedRowOnCommand = -1;
-        }
-        finally
-        {
-            OnCommandExecuted(operationType, sql, args);
-            
-            SafeCloseConnection();
-        }
-
-        return affectedRowOnCommand;
-    }
-    
-    private IEnumerable<T>? SafeQueryOperation<T>(DatabaseOperationTypesEnum operationType, string sql, params object[] args)
-    {
-        var result = new List<T>();
-
-        try
-        {
-            SafeOpenConnection();
-            
-            OnCommandExecution(operationType, sql, args);
-
-            // Check if exist a lothium object, if not will instance a new one
-            var type = typeof(T);
-            var mapper = new AutoMapper(type);
-            var props = AutoMapper.GetMappedProperties<T>();
-
-            using var cmd = SafeCreateCommand(sql, args, CommandType.Text);
-            
-            var cmdReader = cmd.ExecuteReader();
-
-            while (cmdReader.Read())
-            {
-                if (cmdReader.FieldCount <= 0) continue;
-
-                var item = Activator.CreateInstance(type);
-
-                ArgumentNullException.ThrowIfNull(mapper.TableData, nameof(mapper.TableData));
-                ArgumentNullException.ThrowIfNull(mapper.ColumnsData, nameof(mapper.ColumnsData));
-
-                foreach (var prop in props)
-                {
-                    var colInfo = Array.Find(mapper.ColumnsData.ToArray(),
-                        col => col.PocoObjectPropertyName == prop.Name);
-                    ArgumentNullException.ThrowIfNull(colInfo, nameof(colInfo));
-
-                    var value = (string.IsNullOrEmpty(colInfo.Name))
-                        ? cmdReader[colInfo.PocoObjectPropertyName]
-                        : cmdReader[colInfo.Name];
-
-                    value = DatabaseHelper.VerifyDbNullValue(colInfo, value);
-
-                    prop.SetValue(item, value, null);
-                    continue;
-                }
-
-                if (item is not null)
-                {
-                    result.Add((T)item);
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            OnErrorOccured(operationType, ex);
-            
-            result = Enumerable
-                .Empty<T>()
-                .ToList();
-        }
-        finally
-        {
-            OnCommandExecuted(operationType, sql, args);
-            
-            SafeCloseConnection();
-        }
-
-        return result;
-    }
-    
-    /// <summary>
-    /// Perform a bunch of check to validate the passed sql
-    /// </summary>
-    /// <param name="operation">Contains the performed operation that raised the error</param>
-    /// <param name="sql">Contains the sql that will be executed into the provided database's instance</param>
-    /// <param name="parameters">Contains a set of parameters used by the sql</param>
-    protected virtual void OnCommandExecution(DatabaseOperationTypesEnum operation, string sql, object[] parameters)
-    {
-        //SqlBuilderException.ThrowIfSqlNullOrEmpty(sql.Query, sql.Params);
-        
-        if (string.IsNullOrEmpty(sql))
-            throw new ArgumentException("There is not a valid Sql query!");
-
-        if (sql.Contains(_provider.GetVariablePrefix()) && parameters.Length <= 0)
-            throw new ArgumentException("There are no provided parameters for the query!");
-    }
-    
-    /// <summary>
-    /// Contains the actual performed sql with all the associated parameters
-    /// </summary>
-    /// <param name="operation">Contains the performed operation that raised the error</param>
-    /// <param name="sql">Contains the sql executed into the provided database's instance</param>
-    /// <param name="parameters">Contains a set of parameters used by the sql</param>
-    protected virtual void OnCommandExecuted(DatabaseOperationTypesEnum operation,string sql, object[] parameters)
-    {
-        LastSql = new SqlBuilder(sql, parameters)
-            .ToFormatQuery();
-    }
-    
-    /// <summary>
-    /// Contains an actual error generated during the execution of a provided sql
-    /// </summary>
-    /// <param name="operation">Contains the performed operation that raised the error</param>
-    /// <param name="exception">Contains the generated error by the database's instance</param>
-    protected virtual void OnErrorOccured(DatabaseOperationTypesEnum operation, Exception exception)
-    {
-        LastError = exception;
-    }
-    
-    #endregion
-
-    #region Transaction Methods
-    
-    /// <summary>
-    /// Start a new database's transaction for an open connection for the selected provider
-    /// if the connection is not set or open will return an argument null exception
-    /// </summary>
-    public void BeginTransaction() 
-        => SafeOpenTransaction();
-
-    /// <summary>
-    /// Start a new database's transaction for an open connection for the selected provider
-    /// if the connection is not set or open will return an argument null exception
-    /// </summary>
-    public async Task BeginTransactionAsync() 
-        => await Task.Run(SafeOpenTransaction);
     
     /// <summary>
     /// Revert all the operations executed during the active database's transaction for the open connection for the selected provider
     /// If there is any open transaction it will simply exit the method
     /// </summary>
     public void RollbackTransaction()
-        => SafeCloseTransaction(true);
-
-    /// <summary>
-    /// Revert all the operations executed during the active database's transaction for the open connection for the selected provider
-    /// If there is any open transaction it will simply exit the method
-    /// </summary>
-    public async Task RollbackTransactionAsync()
-        => await Task.Run(() => SafeCloseTransaction(true));
+        => SafeCloseAndCleanUpTransaction(true);
     
     /// <summary>
     /// Close the active database's transaction for the open connection for the selected provider
     /// If there is any open transaction it will simply exit the method
     /// </summary>
     public void CommitTransaction()
-        => SafeCloseTransaction(false);
+        => SafeCloseAndCleanUpTransaction(false);
+    
+#if ASYNC
+    
+    /// <summary>
+    /// Open a new asynchronous connection to the chosen database's instance
+    /// </summary>
+    public async Task OpenConnectionAsync()
+        => await OpenConnectionAsync(CancellationToken.None);
+    
+    /// <summary>
+    /// Open a new asynchronous connection to the chosen database's instance
+    /// </summary>
+    public async Task OpenConnectionAsync(CancellationToken cancellationToken)
+    {
+        if (_connectionDepth == 0)
+        {
+            if (_transaction is not null) return;
+            if (DatabaseHelper.CheckConnectionStatus(_connection)) return;
+            
+            if (_connection.State == ConnectionState.Broken)
+                _connection.Close();
+
+            if (_connection.State == ConnectionState.Closed)
+            {
+                try
+                {
+                    var conn = (DbConnection)_connection;
+                    
+                    await conn.OpenAsync(cancellationToken).ConfigureAwait(false);
+                }
+                catch
+                {
+                    _connection.Open();
+                }
+            }
+
+            if (KeepConnectionOpen)
+                _connectionDepth++;
+        }
+
+        _connectionDepth++;
+    }
 
     /// <summary>
-    /// Close the active database's transaction for the open connection for the selected provider
+    /// Close an existing asynchronous opened connection to the chosen database's instance
+    /// </summary>
+    public async Task CloseConnectionAsync()
+    {
+        if (_connectionDepth > 0)
+            _connectionDepth--;
+
+        if (_connectionDepth != 0) return;
+        if (_transaction is not null) return;
+        if (!DatabaseHelper.CheckConnectionStatus(_connection)) return;
+
+        try
+        {
+            var conn = (DbConnection)_connection;
+                    
+            await conn.CloseAsync().ConfigureAwait(false);
+        }
+        catch
+        {
+            _connection.Close();
+        }
+    }
+    
+    /// <summary>
+    /// Start a new asynchronous transaction using a specific isolation level for an open connection for the selected provider
+    /// if the connection is not set or open will return an argument null exception
+    /// </summary>
+    public async Task BeginTransactionAsync()
+        => await BeginTransactionAsync(CancellationToken.None, IsolationLevel.Unspecified);
+    
+    /// <summary>
+    /// Start a new asynchronous transaction using a specific isolation level for an open connection for the selected provider
+    /// if the connection is not set or open will return an argument null exception
+    /// </summary>
+    public async Task BeginTransactionAsync(CancellationToken cancellationToken)
+        => await BeginTransactionAsync(cancellationToken, IsolationLevel.Unspecified);
+    
+    /// <summary>
+    /// Start a new asynchronous transaction using a specific isolation level for an open connection for the selected provider
+    /// if the connection is not set or open will return an argument null exception
+    /// </summary>
+    public async Task BeginTransactionAsync(IsolationLevel isolationLevel)
+        => await BeginTransactionAsync(CancellationToken.None, isolationLevel);
+    
+    /// <summary>
+    /// Start a new asynchronous transaction using a specific isolation level for an open connection for the selected provider
+    /// if the connection is not set or open will return an argument null exception
+    /// </summary>
+    public async Task BeginTransactionAsync(CancellationToken cancellationToken, IsolationLevel isolationLevel)
+    {
+        if (_transactionDepth == 0)
+        {
+            if (_transaction is not null)
+                throw new DatabaseException("There is an existing open transaction!!");
+            
+            await OpenConnectionAsync(cancellationToken);
+
+            try
+            {
+                var conn = (DbConnection)_connection;
+                
+                await conn.BeginTransactionAsync(isolationLevel, cancellationToken);
+            }
+            catch
+            {
+                _transaction = _connection.BeginTransaction(isolationLevel);
+            }
+            
+            _transactionDepth++;
+        }
+    }
+    
+    /// <summary>
+    /// Revert all the operations executed during the active asynchronous database's transaction for the open connection for the selected provider
+    /// If there is any open transaction it will simply exit the method
+    /// </summary>
+    public async Task RollbackTransactionAsync()
+        => await Task.Run(() => SafeCloseAndCleanUpTransaction(true));
+    
+    /// <summary>
+    /// Close the active asynchronous database's transaction for the open connection for the selected provider
     /// If there is any open transaction it will simply exit the method
     /// </summary>
     public async Task CommitTransactionAsync()
-        => await Task.Run(() => SafeCloseTransaction(false));
+        => await Task.Run(() => SafeCloseAndCleanUpTransaction(false));
+    
+#endif
     
     #endregion
     
-    #region  Scalar Command
+    #region  Scalar, ScalarAsync Commands
+    
+    private object? InternalScalarOperation<T>(DatabaseOperationTypesEnum operationType, string sql, object[] args)
+    {
+        object? result = null;
+
+        try
+        {
+            OpenConnection();
+
+            try
+            {
+                OnCommandExecution(operationType, sql, args);
+            
+                using var cmd = DatabaseHelper.CreateDatabaseCommand(
+                    _provider,
+                    _connection,
+                    _transaction,
+                    CommandType.Text,
+                    _commandTimeout,
+                    sql,
+                    args
+                );
+                ArgumentNullException.ThrowIfNull(cmd, nameof(cmd));
+
+                result = DatabaseHelper.PerformScalarCommand<T>(cmd);
+            }
+            finally
+            {
+                LastSql = OnCommandCompleted(operationType, sql, args);
+                
+                CloseConnection();
+            }
+        }
+        catch (Exception ex)
+        {
+            LastError = OnGeneratedError(operationType, ex);
+            
+            result = default;
+        }
+
+        return (T?)result;
+    }
 
     /// <summary>
     /// Invoke the DB Scalar command in the Database Instance and return a single value of a specific object type
@@ -384,7 +456,7 @@ public class Database : IDatabase
     /// <param name="args">Contains all the extra arguments of the query</param>
     /// <returns>A value based of the object type</returns>
     public object? Scalar<T>(string sql, object[] args)
-        => SafeScalarOperation<T>(DatabaseOperationTypesEnum.Scalar, sql, args);
+        => InternalScalarOperation<T>(DatabaseOperationTypesEnum.Scalar, sql, args);
 
     /// <summary>
     /// Invoke the DB Scalar command in the Database Instance and return a single value of a specific object type
@@ -393,7 +465,51 @@ public class Database : IDatabase
     /// <param name="sql">Contains the SQL object</param>
     /// <returns>A value based of the object type</returns>
     public object? Scalar<T>(SqlBuilder sql) 
-        => SafeScalarOperation<T>(DatabaseOperationTypesEnum.Scalar, sql.Query, sql.Params);
+        => InternalScalarOperation<T>(DatabaseOperationTypesEnum.Scalar, sql.Query, sql.Params);
+    
+#if ASYNC
+    
+    private async Task<object?> InternalScalarOperationAsync<T>(CancellationToken cancellationToken, DatabaseOperationTypesEnum operationType, string sql, object[] args)
+    {
+        object? result = null;
+
+        try
+        {
+            await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+
+            try
+            {
+                OnCommandExecution(operationType, sql, args);
+            
+                using var cmd = DatabaseHelper.CreateDatabaseCommand(
+                    _provider,
+                    _connection,
+                    _transaction,
+                    CommandType.Text,
+                    _commandTimeout,
+                    sql,
+                    args
+                );
+                ArgumentNullException.ThrowIfNull(cmd, nameof(cmd));
+
+                result = await DatabaseHelper.PerformScalarCommand<T>((DbCommand)cmd, cancellationToken).ConfigureAwait(false);
+            }
+            finally
+            {
+                LastSql = OnCommandCompleted(operationType, sql, args);
+                
+                await CloseConnectionAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            LastError = OnGeneratedError(operationType, ex);
+            
+            result = default;
+        }
+
+        return (T?)result;
+    }
 
     /// <summary>
     /// Invoke the DB Scalar command in the Database Instance and return a single value of a specific object type
@@ -402,22 +518,86 @@ public class Database : IDatabase
     /// <param name="sql">Contains the query command to be executed</param>
     /// <param name="args">Contains all the extra arguments of the query</param>
     /// <returns>A value based of the object type</returns>
-    public async Task<object?>? ScalarAsync<T>(string sql, object[] args)
-        => await Task.Run(() => SafeScalarOperation<T>(DatabaseOperationTypesEnum.ScalarAsync, sql, args));
+    public async Task<object?> ScalarAsync<T>(string sql, object[] args)
+        => await InternalScalarOperationAsync<T>(CancellationToken.None, DatabaseOperationTypesEnum.ScalarAsync, sql, args).ConfigureAwait(false);
 
+    /// <summary>
+    /// Invoke the DB Scalar command in the Database Instance and return a single value of a specific object type
+    /// </summary>
+    /// <typeparam name="T">Contains the type for the returned object</typeparam>
+    /// <param name="cancellationToken">Contains a token that will be used to cancel the operation</param>
+    /// <param name="sql">Contains the query command to be executed</param>
+    /// <param name="args">Contains all the extra arguments of the query</param>
+    /// <returns>A value based of the object type</returns>
+    public async Task<object?> ScalarAsync<T>(CancellationToken cancellationToken, string sql, object[] args)
+        => await InternalScalarOperationAsync<T>(cancellationToken, DatabaseOperationTypesEnum.ScalarAsync, sql, args).ConfigureAwait(false);
+    
     /// <summary>
     /// Invoke the DB Scalar command in the Database Instance and return a single value of a specific object type
     /// </summary>
     /// <typeparam name="T">Contains the type for the returned object</typeparam>
     /// <param name="sql">Contains the SQL object</param>
     /// <returns>A value based of the object type</returns>
-    public async Task<object?>? ScalarAsync<T>(SqlBuilder sql) 
-        => await Task.Run(() => SafeScalarOperation<T>(DatabaseOperationTypesEnum.ScalarAsync, sql.Query, sql.Params));
+    public async Task<object?> ScalarAsync<T>(SqlBuilder sql) 
+        => await InternalScalarOperationAsync<T>(CancellationToken.None, DatabaseOperationTypesEnum.ScalarAsync, sql.Query, sql.Params).ConfigureAwait(false);
     
+    /// <summary>
+    /// Invoke the DB Scalar command in the Database Instance and return a single value of a specific object type
+    /// </summary>
+    /// <typeparam name="T">Contains the type for the returned object</typeparam>
+    /// <param name="cancellationToken">Contains a token that will be used to cancel the operation</param>
+    /// <param name="sql">Contains the SQL object</param>
+    /// <returns>A value based of the object type</returns>
+    public async Task<object?> ScalarAsync<T>(CancellationToken cancellationToken, SqlBuilder sql) 
+        => await InternalScalarOperationAsync<T>(cancellationToken, DatabaseOperationTypesEnum.ScalarAsync, sql.Query, sql.Params).ConfigureAwait(false);
+    
+#endif
+
     #endregion
 
-    #region Execute Command
+    #region Execute, ExecuteAsync Commands
 
+    private int InternalExecuteOperation(DatabaseOperationTypesEnum operationType, string sql, params object[] args)
+    {
+        var affectedRowOnCommand = 0;
+
+        try
+        {
+            OpenConnection();
+
+            try
+            {
+                OnCommandExecution(operationType, sql, args);
+
+                using var cmd = DatabaseHelper.CreateDatabaseCommand(
+                    _provider,
+                    _connection,
+                    _transaction,
+                    CommandType.Text,
+                    _commandTimeout,
+                    sql,
+                    args
+                );
+            
+                affectedRowOnCommand = DatabaseHelper.PerformExecuteCommand(cmd);
+            }
+            finally
+            {
+                LastSql = OnCommandCompleted(operationType, sql, args);
+            
+                CloseConnection();
+            }   
+        }
+        catch (Exception ex)
+        {
+            LastError = OnGeneratedError(operationType, ex);
+            
+            affectedRowOnCommand = -1;
+        }
+
+        return affectedRowOnCommand;
+    }
+    
     /// <summary>
     /// Invoke the DB NonQuery command in the Database Instance and return the number of completed operations
     /// </summary>
@@ -425,7 +605,7 @@ public class Database : IDatabase
     /// <param name="args">Contains all the extra arguments of the query</param>
     /// <returns>An int value that count all the affected table rows</returns>
     public int Execute(string sql, params object[] args)
-        => SafeExecuteOperation(DatabaseOperationTypesEnum.ExecuteQuery, sql, args);
+        => InternalExecuteOperation(DatabaseOperationTypesEnum.ExecuteQuery, sql, args);
 
     /// <summary>
     /// Invoke the DB NonQuery command in the Database Instance and return the number of completed operations
@@ -433,7 +613,50 @@ public class Database : IDatabase
     /// <param name="sql">Contains the SQL object</param>
     /// <returns>An int value that count all the affected table rows</returns>
     public int Execute(SqlBuilder sql)
-        => SafeExecuteOperation(DatabaseOperationTypesEnum.ExecuteQuery, sql.Query, sql.Params);
+        => InternalExecuteOperation(DatabaseOperationTypesEnum.ExecuteQuery, sql.Query, sql.Params);
+
+#if ASYNC
+    
+    private async Task<int> InternalExecuteOperationAsync(CancellationToken cancellationToken, DatabaseOperationTypesEnum operationType, string sql, params object[] args)
+    {
+        var affectedRowOnCommand = 0;
+
+        try
+        {
+            await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+
+            try
+            {
+                OnCommandExecution(operationType, sql, args);
+
+                using var cmd = DatabaseHelper.CreateDatabaseCommand(
+                    _provider,
+                    _connection,
+                    _transaction,
+                    CommandType.Text,
+                    _commandTimeout,
+                    sql,
+                    args
+                );
+
+                affectedRowOnCommand = await DatabaseHelper.PerformExecuteCommandAsync((DbCommand)cmd, cancellationToken).ConfigureAwait(false);
+            }
+            finally
+            {
+                LastSql = OnCommandCompleted(operationType, sql, args);
+            
+                await CloseConnectionAsync();
+            }   
+        }
+        catch (Exception ex)
+        {
+            LastError = OnGeneratedError(operationType, ex);
+            
+            affectedRowOnCommand = -1;
+        }
+
+        return affectedRowOnCommand;
+    }
 
     /// <summary>
     /// Invoke the DB NonQuery command in the Database Instance and return the number of completed operations
@@ -442,20 +665,88 @@ public class Database : IDatabase
     /// <param name="args">Contains all the extra arguments of the query</param>
     /// <returns>An int value that count all the affected table rows</returns>
     public async Task<int> ExecuteAsync(string sql, params object[] args)
-        => await Task.Run(() => SafeExecuteOperation(DatabaseOperationTypesEnum.ExecuteQueryAsync, sql, args));
+        => await InternalExecuteOperationAsync(CancellationToken.None, DatabaseOperationTypesEnum.ExecuteQueryAsync, sql, args).ConfigureAwait(false);
 
+    /// <summary>
+    /// Invoke the DB NonQuery command in the Database Instance and return the number of completed operations
+    /// </summary>
+    /// <param name="cancellationToken">Contains a token to cancel the asynchronous calling</param>
+    /// <param name="sql">Contains the query command to be executed</param>
+    /// <param name="args">Contains all the extra arguments of the query</param>
+    /// <returns>An int value that count all the affected table rows</returns>
+    public async Task<int> ExecuteAsync(CancellationToken cancellationToken, string sql, params object[] args)
+        => await InternalExecuteOperationAsync(cancellationToken, DatabaseOperationTypesEnum.ExecuteQueryAsync, sql, args).ConfigureAwait(false);
+    
     /// <summary>
     /// Invoke the DB NonQuery command in the Database Instance and return the number of completed operations
     /// </summary>
     /// <param name="sql">Contains the SQL object</param>
     /// <returns>An int value that count all the affected table rows</returns>
     public async Task<int> ExecuteAsync(SqlBuilder sql)
-        => await Task.Run(() => SafeExecuteOperation(DatabaseOperationTypesEnum.ExecuteQueryAsync, sql.Query, sql.Params));
+        => await InternalExecuteOperationAsync(CancellationToken.None, DatabaseOperationTypesEnum.ExecuteQueryAsync, sql.Query, sql.Params).ConfigureAwait(false);
     
+    /// <summary>
+    /// Invoke the DB NonQuery command in the Database Instance and return the number of completed operations
+    /// </summary>
+    /// <param name="cancellationToken">Contains a token to cancel the asynchronous calling</param>
+    /// <param name="sql">Contains the SQL object</param>
+    /// <returns>An int value that count all the affected table rows</returns>
+    public async Task<int> ExecuteAsync(CancellationToken cancellationToken, SqlBuilder sql)
+        => await InternalExecuteOperationAsync(cancellationToken, DatabaseOperationTypesEnum.ExecuteQueryAsync, sql.Query, sql.Params).ConfigureAwait(false);
+    
+#endif
+        
     #endregion
 
-    #region Query Command
+    #region Query, QueryAsync Commands
 
+    private IEnumerable<T>? InternalQueryOperation<T>(DatabaseOperationTypesEnum operationType, string sql, params object[] args)
+    {
+        List<T> result;
+
+        try
+        {
+            OpenConnection();
+
+            try
+            {
+                var type = typeof(T);
+                var mapper = new AutoMapper(type);
+                var props = AutoMapper.GetMappedProperties<T>();
+
+                using var cmd = DatabaseHelper.CreateDatabaseCommand(
+                    _provider,
+                    _connection,
+                    _transaction,
+                    CommandType.Text,
+                    _commandTimeout,
+                    sql,
+                    args
+                );
+
+                result = (List<T>)DatabaseHelper.PerformQueryCommand<T>(cmd);
+            }
+            finally
+            {
+                LastSql = OnCommandCompleted(operationType, sql, args);
+            
+                CloseConnection();
+            }
+            
+            OnCommandExecution(operationType, sql, args);
+        }
+        catch (Exception ex)
+        {
+            LastError = OnGeneratedError(operationType, ex);
+            
+            result = Enumerable
+                .Empty<T>()
+                .ToList();
+        }
+
+        return result;
+    }
+    
     /// <summary>
     /// Invoke the DB Query command in the Database Instance and cast it to a specific object type
     /// </summary>
@@ -464,7 +755,7 @@ public class Database : IDatabase
     /// <param name="args">Contains all the extra arguments of the query</param>
     /// <returns>A value based of the object type</returns>
     public IEnumerable<T>? Query<T>(string sql, params object[] args)
-        => SafeQueryOperation<T>(DatabaseOperationTypesEnum.Query, sql, args);
+        => InternalQueryOperation<T>(DatabaseOperationTypesEnum.Query, sql, args);
 
     /// <summary>
     /// Invoke the DB Query command in the Database Instance and cast it to a specific object type
@@ -473,8 +764,58 @@ public class Database : IDatabase
     /// <param name="sql">Contains the SQL object</param>
     /// <returns>A value based of the object type</returns>
     public IEnumerable<T>? Query<T>(SqlBuilder sql) 
-        => SafeQueryOperation<T>(DatabaseOperationTypesEnum.Query, sql.Query, sql.Params);
+        => InternalQueryOperation<T>(DatabaseOperationTypesEnum.Query, sql.Query, sql.Params);
 
+#if ASYNC
+
+    private async Task<IEnumerable<T>?> InternalQueryOperationAsync<T>(
+        CancellationToken cancellationToken,
+        DatabaseOperationTypesEnum operationType,
+        string sql,
+        params object[] args
+    )
+    {
+        List<T> result;
+
+        try
+        {
+            OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+
+            try
+            {
+                using var cmd = DatabaseHelper.CreateDatabaseCommand(
+                    _provider,
+                    _connection,
+                    _transaction,
+                    CommandType.Text,
+                    _commandTimeout,
+                    sql,
+                    args
+                );
+
+                result = (List<T>)await DatabaseHelper.PerformQueryCommandAsync<T>((DbCommand)cmd, cancellationToken);
+            }
+            finally
+            {
+                LastSql = OnCommandCompleted(operationType, sql, args);
+            
+                await CloseConnectionAsync();
+            }
+            
+            OnCommandExecution(operationType, sql, args);
+        }
+        catch (Exception ex)
+        {
+            LastError = OnGeneratedError(operationType, ex);
+            
+            result = Enumerable
+                .Empty<T>()
+                .ToList();
+        }
+
+        return result;
+    }
+    
     /// <summary>
     /// Invoke the DB Query command in the Database Instance and cast it to a specific object type
     /// </summary>
@@ -482,17 +823,31 @@ public class Database : IDatabase
     /// <param name="sql">Contains the query command to be executed</param>
     /// <param name="args">Contains all the extra arguments of the query</param>
     /// <returns>A value based of the object type</returns>
-    public async Task<IEnumerable<T>?>? QueryAsync<T>(string sql, params object[] args)
-        => await Task.Run(() => SafeQueryOperation<T>(DatabaseOperationTypesEnum.Query, sql, args));
+    public async Task<IEnumerable<T>?> QueryAsync<T>(string sql, params object[] args)
+        => await InternalQueryOperationAsync<T>(CancellationToken.None, DatabaseOperationTypesEnum.Query, sql, args);
 
     /// <summary>
     /// Invoke the DB Query command in the Database Instance and cast it to a specific object type
     /// </summary>
     /// <typeparam name="T">Contains the type for the returned object</typeparam>
+    /// <param name="cancellationToken">Contains a token to cancel the current operation</param>
+    /// <param name="sql">Contains the query command to be executed</param>
+    /// <param name="args">Contains all the extra arguments of the query</param>
+    /// <returns>A value based of the object type</returns>
+    public async Task<IEnumerable<T>?> QueryAsync<T>(CancellationToken cancellationToken, string sql, params object[] args)
+        => await InternalQueryOperationAsync<T>(cancellationToken, DatabaseOperationTypesEnum.Query, sql, args);
+    
+    /// <summary>
+    /// Invoke the DB Query command in the Database Instance and cast it to a specific object type
+    /// </summary>
+    /// <typeparam name="T">Contains the type for the returned object</typeparam>
+    /// <param name="cancellationToken">Contains a token to cancel the current operation</param>
     /// <param name="sql">Contains the SQL object</param>
     /// <returns>A value based of the object type</returns>
-    public async Task<IEnumerable<T>?>? QueryAsync<T>(SqlBuilder sql) 
-        => await Task.Run(() => SafeQueryOperation<T>(DatabaseOperationTypesEnum.Query, sql.Query, sql.Params));
+    public async Task<IEnumerable<T>?> QueryAsync<T>(CancellationToken cancellationToken, SqlBuilder sql) 
+        => await InternalQueryOperationAsync<T>(cancellationToken, DatabaseOperationTypesEnum.Query, sql.Query, sql.Params);
+
+#endif
     
     #endregion
 
