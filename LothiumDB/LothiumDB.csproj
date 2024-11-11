@@ -35,11 +35,6 @@
     <None Remove="Providers\**" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="MySql.Data" Version="8.3.0" />
-    <PackageReference Include="Npgsql" Version="8.0.1" />
-    <PackageReference Include="System.Data.SqlClient" Version="4.8.6" />
-  </ItemGroup>
-  <ItemGroup>
     <Compile Remove="Core\LothiumObject.cs" />
     <Compile Remove="Extensions\ColumnInfo.cs" />
     <Compile Remove="Extensions\PrimaryKeyInfo.cs" />
