@@ -1,5 +1,5 @@
 using System.Data;
-using LothiumDB.Core.Enumerations;
+using LothiumDB.Enumerations;
 
 namespace LothiumDB;
 
@@ -17,7 +17,7 @@ public class DatabaseConfiguration()
     /// <summary>
     /// Indicates the type of the connection object provided
     /// </summary>
-    public ProviderTypesEnum Type { get; set; }
+    public DatabaseProviderTypesEnum Type { get; set; }
     
     /// <summary>
     /// Indicates what type of character is used by the connection object to identify variables

@@ -1,4 +1,4 @@
-namespace LothiumDB.Core.Enumerations;
+namespace LothiumDB.Enumerations;
 
 /// <summary>
 /// Define all the different types of operation available inside the Database class

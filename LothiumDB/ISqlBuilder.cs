@@ -1,6 +1,6 @@
 ﻿using LothiumDB.Tools;
 
-namespace LothiumDB.Core.Interfaces;
+namespace LothiumDB;
 
 /// <summary>
 /// This interface defines the structure of the Built-In SqlBuilder

@@ -1,11 +1,11 @@
-using LothiumDB.Core.Enumerations;
+using LothiumDB.Enumerations;
 using LothiumDB.Tools;
 
-namespace LothiumDB.Core.Interfaces;
+namespace LothiumDB;
 
 public interface IDatabaseProvider
 {
-    ProviderTypesEnum GetProviderType();
+    DatabaseProviderTypesEnum GetProviderType();
 
     string GetVariablePrefix();
 

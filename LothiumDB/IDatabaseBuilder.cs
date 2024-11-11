@@ -1,4 +1,4 @@
-namespace LothiumDB.Core.Interfaces;
+namespace LothiumDB;
 
 public interface IDatabaseBuilder
 {

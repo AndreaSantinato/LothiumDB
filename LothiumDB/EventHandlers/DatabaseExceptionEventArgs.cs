@@ -1,4 +1,4 @@
-using LothiumDB.Core.Enumerations;
+using LothiumDB.Enumerations;
 
 namespace LothiumDB.EventHandlers;
 

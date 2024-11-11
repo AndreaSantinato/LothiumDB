@@ -1,6 +1,6 @@
 ﻿using System.Data.SqlClient;
 using LothiumDB;
-using LothiumDB.Core.Enumerations;
+using LothiumDB.Enumerations;
 using LothiumDB.Tests.Testers;
 
 Console.WriteLine("[I] Start Testing Console Project");
@@ -8,7 +8,7 @@ Console.WriteLine("[I] Start Testing Console Project");
 using var db = DatabaseBuilder
     .CreateBuilder()
     .AddProvider(
-        ProviderTypesEnum.MicrosoftSqlServer,
+        DatabaseProviderTypesEnum.MicrosoftSqlServer,
         new SqlConnection(
             new SqlConnectionStringBuilder()
             {

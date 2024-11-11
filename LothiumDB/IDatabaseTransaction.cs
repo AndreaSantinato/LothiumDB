@@ -1,6 +1,6 @@
 using System.Data;
 
-namespace LothiumDB.Core.Interfaces;
+namespace LothiumDB;
 
 public interface IDatabaseTransaction
 {

@@ -1,6 +1,5 @@
 using System.Data;
-using LothiumDB.Core.Enumerations;
-using LothiumDB.Core.Interfaces;
+using LothiumDB.Enumerations;
 using LothiumDB.Exceptions;
 
 namespace LothiumDB;
@@ -23,7 +22,7 @@ public class DatabaseBuilder : IDatabaseBuilder
     /// <param name="connection">Contains the actual connection object</param>
     /// <param name="variablePrefix">Indicates what type of variable the provider will use inside the sql commands</param>
     /// <returns></returns>
-    public DatabaseBuilder AddProvider(ProviderTypesEnum type, IDbConnection connection, string variablePrefix)
+    public DatabaseBuilder AddProvider(DatabaseProviderTypesEnum type, IDbConnection connection, string variablePrefix)
     {
         _configuration.Type = type;
         _configuration.Connection = connection;
@@ -51,7 +50,7 @@ public class DatabaseBuilder : IDatabaseBuilder
     /// <returns>A new object of the database class</returns>
     public Database Build()
     {
-        if (_configuration.Type.Equals(ProviderTypesEnum.None))
+        if (_configuration.Type.Equals(DatabaseProviderTypesEnum.None))
             throw new DatabaseException("Specify a valid provider's type!");
         
         if (_configuration.Connection is null)

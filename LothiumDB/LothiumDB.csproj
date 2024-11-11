@@ -33,6 +33,7 @@
     <None Remove="Microsoft.Data.SqlClient" />
     <None Remove="Data\**" />
     <None Remove="Providers\**" />
+    <None Remove="Core\Interfaces\**" />
   </ItemGroup>
   <ItemGroup>
     <Compile Remove="Core\LothiumObject.cs" />
@@ -54,10 +55,12 @@
     <Compile Remove="Core\DatabaseTransaction.cs" />
     <Compile Remove="Core\Interfaces\IProvider.cs" />
     <Compile Remove="Core\Interfaces\IDatabaseCore.cs" />
+    <Compile Remove="Core\Interfaces\**" />
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Remove="Data\**" />
     <EmbeddedResource Remove="Providers\**" />
+    <EmbeddedResource Remove="Core\Interfaces\**" />
   </ItemGroup>
   <ItemGroup>
     <None Include="LothiumDB\LothiumDB.png">

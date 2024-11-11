@@ -1,9 +1,9 @@
-﻿namespace LothiumDB.Core.Enumerations;
+﻿namespace LothiumDB.Enumerations;
 
 /// <summary>
-/// Indicates the type of a Database's Provider
+/// Indicates the type of Database's Provider
 /// </summary>
-public enum ProviderTypesEnum
+public enum DatabaseProviderTypesEnum
 {
     None = 0,
     MicrosoftSqlServer = 1,

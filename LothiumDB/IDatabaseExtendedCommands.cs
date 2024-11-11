@@ -1,6 +1,6 @@
 using LothiumDB.Tools;
 
-namespace LothiumDB.Core.Interfaces;
+namespace LothiumDB;
 
 public interface IDatabaseExtendedCommands
 {

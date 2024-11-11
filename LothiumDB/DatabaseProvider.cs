@@ -1,19 +1,18 @@
 using System.Data;
-using LothiumDB.Core.Enumerations;
-using LothiumDB.Core.Interfaces;
+using LothiumDB.Enumerations;
 using LothiumDB.Tools;
 
 namespace LothiumDB;
 
-public class DatabaseProvider(ProviderTypesEnum type, string variablePrefix) : IDatabaseProvider
+public class DatabaseProvider(DatabaseProviderTypesEnum type, string variablePrefix) : IDatabaseProvider
 {
-    private readonly ProviderTypesEnum _type = type;
+    private readonly DatabaseProviderTypesEnum _type = type;
     private readonly string _variablePrefix = variablePrefix;
 
     /// <summary>
     /// Indicates the type of the provider
     /// </summary>
-    public ProviderTypesEnum GetProviderType() => _type;
+    public DatabaseProviderTypesEnum GetProviderType() => _type;
     
     /// <summary>
     /// Indicates prefix that will be used to generate new parameter's variable
