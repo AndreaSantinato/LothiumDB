@@ -1,5 +1,3 @@
-using LothiumDB.Tools;
-
 namespace LothiumDB;
 
 public interface IDatabaseExtendedCommands

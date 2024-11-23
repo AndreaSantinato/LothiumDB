@@ -1,7 +1,6 @@
 ﻿using System.Data;
 using System.Data.Common;
 using System.Text.RegularExpressions;
-using LothiumDB.Tools;
 using LothiumDB.Exceptions;
 using LothiumDB.Core.PocoDataInfo;
 
@@ -70,18 +69,137 @@ internal static class DatabaseHelper
 
         if (args.Length != 0)
         {
-            DatabaseHelper.AddParamsToDatabaseCommand(
-                provider,
+            DatabaseHelper.AddParametersToDatabaseCommand(
                 ref command,
-                new SqlBuilder(sql, args)
+                provider,
+                sql,
+                args
             );
         }
 
+        // If the query contains a double variable prefix it will be formatted to be a normal sql variable
+        if (command.CommandText.Contains($"{provider.GetVariablePrefix()}{provider.GetVariablePrefix()}"))
+        {
+            command.CommandText = command.CommandText.Replace(
+                $"{provider.GetVariablePrefix()}{provider.GetVariablePrefix()}",
+                provider.GetVariablePrefix()
+            );
+        }
+        
         DatabaseException.ThrowIfNull(command);
 
         return command;
     }
 
+    /// <summary>
+    /// Add all the variables inside the query to the final database command to be executed by the library
+    /// This method will add a parameters for each variable with their respected values
+    /// </summary>
+    /// <param name="provider">Contains the loaded database provider</param>
+    /// <param name="command">Contains the created database command</param>
+    /// <param name="sql">Contains the sql query</param>
+    /// <param name="args">Contains the sql parameters</param>
+    private static void AddParametersToDatabaseCommand(
+        ref IDbCommand command,
+        IDatabaseProvider provider,
+        string sql,
+        object[] args
+    )
+    {
+        foreach (var variable in ExtractVariablesFromQuery(sql, args))
+        {
+            var param = command.CreateParameter();
+                
+            param.ParameterName = variable.Key;
+            param.Value = variable.Value;
+
+            // Define the type of the parameter
+            if (param.Value.GetType() == typeof(object))
+            {
+                param.DbType = DbType.Object;
+            }
+            else
+                switch (param.Value)
+                {
+                    case bool:
+                        param.DbType = DbType.Boolean;
+                        break;
+                    case byte:
+                        param.DbType = DbType.Byte;
+                        break;
+                    case string:
+                        param.DbType = DbType.String;
+                        break;
+                    case short:
+                    case ushort:
+                        param.DbType = DbType.Int16;
+                        break;
+                    case int:
+                    case uint:
+                        param.DbType = DbType.Int32;
+                        break;
+                    case long:
+                    case ulong:
+                        param.DbType = DbType.Int64;
+                        break;
+                    case double:
+                        param.DbType = DbType.Double;
+                        break;
+                    case decimal:
+                        param.DbType = DbType.Decimal;
+                        break;
+                    case Guid:
+                        param.DbType = DbType.Guid;
+                        break;
+                    case DateOnly:
+                        param.DbType = DbType.Date;
+                        break;
+                    case DateTime:
+                        param.DbType = DbType.DateTime;
+                        break;
+                    default:
+                        break;
+                }
+
+            // Add the created parameter to the final database command
+            command.Parameters.Add(param);
+        }
+    }
+    
+    /// <summary>
+    /// Extract all the variables declared inside the provided sql
+    /// and create a dictionary with variables names and values
+    /// </summary>
+    /// <param name="sql">Contains the SQL that include all the declared variables</param>
+    /// <param name="args">Contains all the provided values for every single variables</param>
+    /// <returns>A dictionary with all the variables and their unique values</returns>
+    /// <exception cref="DatabaseException">
+    /// Generate an exception if the SQL is non provided or if the values doesn't match the variables
+    /// </exception>
+    private static Dictionary<string, object> ExtractVariablesFromQuery(string sql, object[] args)
+    {
+        if (string.IsNullOrEmpty(sql))
+            throw new DatabaseException("No valid SQL provided!");
+
+        if (args.Length == 0)
+            return [];
+        
+        var matches = new Regex(@"@(\w+)").Matches(sql);
+        if (matches.Count > args.Length)
+            throw new DatabaseException("There are not enough values for all the retrieved variables in the SQL!");
+
+        var variables = new Dictionary<string, object>();
+        
+        for (var i = 0; i < matches.Count; i++)
+        {
+            var variable = matches[i].Value;
+            
+            variables[variable] = args[i];
+        }
+
+        return variables;
+    }
+    
     /// <summary>
     /// Perform a bunch of checks to the provided database's command
     /// </summary>
@@ -99,6 +217,12 @@ internal static class DatabaseHelper
             throw new DatabaseException("The SQL command contains variables but no parameters provided!");
     }
     
+    /// <summary>
+    /// Perform a database reader and auto map the results inside a provided object's type
+    /// </summary>
+    /// <param name="reader">Contains the reader to use to retrieve all the data</param>
+    /// <typeparam name="T">Contains the type of the object to map the retrieved data</typeparam>
+    /// <returns>A collection of object based on the provided type auto mapped dynamically</returns>
     private static IEnumerable<T> RetrieveAndMapData<T>(IDataReader reader)
     {
         var result = new List<T>();
@@ -125,10 +249,11 @@ internal static class DatabaseHelper
                 var value = (string.IsNullOrEmpty(colInfo.Name))
                     ? reader[colInfo.PocoObjectPropertyName]
                     : reader[colInfo.Name];
-
-                value = DatabaseHelper.VerifyDbNullValue(colInfo, value);
+                
+                VerifyDbNullValue(colInfo, ref value);
 
                 prop.SetValue(item, value, null);
+                
                 continue;
             }
 
@@ -257,152 +382,27 @@ internal static class DatabaseHelper
             ? default(T)
             : Convert.ChangeType(value, underlyingType ?? returnType);
     }
-    
-    /// <summary>
-    /// Retrieve all the parameter's variables inside a sql query
-    /// </summary>
-    /// <param name="provider">Contains the chosen database provider</param>
-    /// <param name="sql">Contains the actual sql query</param>
-    /// <returns></returns>
-    private static MatchCollection? ExtractParametersVariableFromQuery(IDatabaseProvider provider, SqlBuilder sql)
-    {
-        var regex = new Regex(
-            $@"(?<!{provider.GetVariablePrefix()}){provider.GetVariablePrefix()}\w+",
-            RegexOptions.Compiled
-        );
-        return string.IsNullOrEmpty(sql.Query) ? null : regex.Matches(sql.Query);
-    }
 
     /// <summary>
-    /// Verify the nullable state of the column and perform the appropriete checks
+    /// Verify the nullable state of the column and perform the appropriate checks
     /// </summary>
     /// <param name="value"></param>
     /// <param name="columnData"></param>
-    internal static object? VerifyDbNullValue(PocoColumnData columnData, object? value)
+    private static void VerifyDbNullValue(PocoColumnData columnData, ref object? value)
     {
-        if (value != DBNull.Value) 
-            return value;
+        if (value != DBNull.Value)
+            return;
 
-        if (!columnData.Nullable)
+        if (columnData.Nullable)
         {
-            ArgumentNullException.ThrowIfNull(columnData.DefaultValue, nameof(columnData.DefaultValue));
-
-            var colName = (string.IsNullOrEmpty(columnData.Name))
-                ? columnData.PocoObjectPropertyName
-                : columnData.Name;
-
-            throw new Exception($"The column {colName} don't allow nullable values");
+            value = null;
+            return;
         }
+        
+        var columnName = string.IsNullOrEmpty(columnData.Name)
+            ? columnData.PocoObjectPropertyName
+            : columnData.Name;
 
-        return null;
-    }
-
-    /// <summary>
-    /// Add all the variables inside the query to the final database command to be executed by the library
-    /// This method will add a parameters for each variables with their respected values
-    /// </summary>
-    /// <param name="provider">Contains the loaded database provider</param>
-    /// <param name="command">Contains the database command to add the parameters</param>
-    /// <param name="sql">Contains the sql query</param>
-    private static void AddParamsToDatabaseCommand(IDatabaseProvider provider, ref IDbCommand command, SqlBuilder sql)
-    {
-        var paramsList = new Dictionary<string, object>();
-
-        // Gets all the variables inside the query
-        var variables = DatabaseHelper.ExtractParametersVariableFromQuery(provider, sql);
-        if (variables != null && !variables.Any()) return;
-
-        // Add to the dictionary all the variables with their respected values
-        var index = 0;
-        if (variables != null)
-        {
-            foreach (var variable in variables)
-            {
-                if (variable is null) continue;
-
-                var key = variable.ToString();
-                var value = sql.Params.ElementAt(index);
-
-                if (key != null) paramsList.Add(key, value);
-                index++;
-            }
-        }
-
-        // Add the parameters inside the database command (Name and Values)
-        foreach (var elem in paramsList)
-        {
-            // Create a new database parameter
-            var param = command.CreateParameter();
-
-            // Set the name and value for the parameter
-            param.ParameterName = elem.Key;
-            param.Value = elem.Value;
-
-            // Define the type of the parameter
-            if (elem.Value.GetType() == typeof(object))
-            {
-                param.DbType = DbType.Object;
-            }
-            else
-                switch (elem.Value)
-                {
-                    case bool:
-                        param.DbType = DbType.Boolean;
-                        break;
-                    case byte:
-                        param.DbType = DbType.Byte;
-                        break;
-                    case string:
-                        param.DbType = DbType.String;
-                        break;
-                    case short:
-                        param.DbType = DbType.Int16;
-                        break;
-                    case ushort:
-                        param.DbType = DbType.Int16;
-                        break;
-                    case int:
-                        param.DbType = DbType.Int32;
-                        break;
-                    case uint:
-                        param.DbType = DbType.Int32;
-                        break;
-                    case long:
-                        param.DbType = DbType.Int64;
-                        break;
-                    case ulong:
-                        param.DbType = DbType.Int64;
-                        break;
-                    case double:
-                        param.DbType = DbType.Double;
-                        break;
-                    case decimal:
-                        param.DbType = DbType.Decimal;
-                        break;
-                    case Guid:
-                        param.DbType = DbType.Guid;
-                        break;
-                    case DateOnly:
-                        param.DbType = DbType.Date;
-                        break;
-                    case DateTime:
-                        param.DbType = DbType.DateTime;
-                        break;
-                    default:
-                        break;
-                }
-
-            // Add the created parameter to the final database command
-            command.Parameters.Add(param);
-        }
-
-        // If the query contains a double variable prefix it will be formatted to be a normal sql variable
-        if (command.CommandText.Contains($"{provider.GetVariablePrefix()}{provider.GetVariablePrefix()}"))
-        {
-            command.CommandText = command.CommandText.Replace(
-                $"{provider.GetVariablePrefix()}{provider.GetVariablePrefix()}",
-                provider.GetVariablePrefix()
-            );
-        }
+        throw new DatabaseException($"The column '{columnName}' does not allow nullable values!");
     }
 }

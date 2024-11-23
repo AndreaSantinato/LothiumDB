@@ -1,5 +1,4 @@
 ﻿using LothiumDB.Tests.TestModels;
-using LothiumDB.Tools;
 
 namespace LothiumDB.Tests.Testers;
 

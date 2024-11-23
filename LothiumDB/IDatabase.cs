@@ -1,6 +1,4 @@
-﻿using LothiumDB.Tools;
-
-namespace LothiumDB;
+﻿namespace LothiumDB;
 
 internal interface IDatabase : IDisposable, IDatabaseConnection, IDatabaseTransaction, IDatabaseCommands, IDatabaseExtendedCommands
 { }

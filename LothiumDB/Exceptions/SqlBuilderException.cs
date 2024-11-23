@@ -1,5 +1,4 @@
 ﻿using System.Diagnostics.CodeAnalysis;
-using LothiumDB.Tools;
 
 namespace LothiumDB.Exceptions;
 

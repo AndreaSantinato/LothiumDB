@@ -1,7 +1,6 @@
-﻿// System Class
-using System.Text;
+﻿using System.Text;
 
-namespace LothiumDB.Tools;
+namespace LothiumDB;
 
 public sealed class SqlBuilder : IDisposable
 {
@@ -16,7 +15,7 @@ public sealed class SqlBuilder : IDisposable
     /// Contains the stored parameters
     /// </summary>
     public object[] Params { get; private set; }
-
+    
     #endregion
 
     #region Class Constructor & Destructor Methods
@@ -24,7 +23,7 @@ public sealed class SqlBuilder : IDisposable
     /// <summary>
     /// Builder for creating a new Sql Object
     /// </summary>
-    public SqlBuilder() : this(string.Empty, Array.Empty<object>()) { }
+    public SqlBuilder() : this(string.Empty) { }
 
     /// <summary>
     /// Builder for creating a new Sql Object
@@ -34,15 +33,18 @@ public sealed class SqlBuilder : IDisposable
     public SqlBuilder(string query, params object[] args)
     {
         Query = query;
-        Params = Array.Empty<object>();
-        if (args.Any()) UpdateParameters(args);
+        Params = [];
+        
+        if (args.Length != 0) 
+            UpdateParameters(args);
     }
-
+    
     /// <summary>
     /// Dispose the Sql Object instance previously created
     /// </summary>
     // ReSharper disable once GCSuppressFinalizeForTypeWithoutDestructor
-    public void Dispose() => GC.SuppressFinalize(this);
+    public void Dispose() 
+        => GC.SuppressFinalize(this);
 
     #endregion
 
@@ -54,11 +56,23 @@ public sealed class SqlBuilder : IDisposable
     /// <param name="newArgs">Contains the set of new parameters to add</param>
     private void UpdateParameters(params object[] newArgs)
     {
-        if (!newArgs.Any()) return;
+        if (newArgs.Length == 0) 
+            return;
 
         var unifiedArgsArray = new object[Params.Length + newArgs.Length];
-        Array.Copy(Params, unifiedArgsArray, Params.Length);
-        Array.Copy(newArgs, 0, unifiedArgsArray, Params.Length, newArgs.Length);
+        
+        Array.Copy(
+            sourceArray: Params,
+            destinationArray: unifiedArgsArray, 
+            length: Params.Length
+        );
+        Array.Copy(
+            sourceArray: newArgs,
+            sourceIndex: 0,
+            destinationArray: unifiedArgsArray,
+            destinationIndex: Params.Length,
+            length: newArgs.Length
+        );
 
         Params = unifiedArgsArray;
     }
@@ -69,7 +83,7 @@ public sealed class SqlBuilder : IDisposable
     public void Clear()
     {
         Query = string.Empty;
-        Params = Array.Empty<object>();
+        Params = [];
     }
 
     /// <summary>
@@ -80,16 +94,21 @@ public sealed class SqlBuilder : IDisposable
     {
         try
         {
-            if (string.IsNullOrEmpty(Query)) return string.Empty;
-            if (!Params.Any()) return $"{Query}\n\n/// No Params ///";
+            if (string.IsNullOrEmpty(Query)) 
+                return string.Empty;
+            
+            if (Params.Length == 0) 
+                return $"{Query}\n\n/// No Params ///";
 
             // Format the parameters for the output result
             var formattedParameters = string.Empty;
             var parIndex = 0;
+            
             Params?.ToList().ForEach(par =>
             {
                 var parName = par.ToString();
                 var parValue = Params[parIndex];
+                
                 formattedParameters += $"\n{parIndex}) {parName} = {parValue}";
                 parIndex++;
             });

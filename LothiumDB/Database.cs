@@ -4,7 +4,6 @@ using LothiumDB.Core;
 using LothiumDB.Enumerations;
 using LothiumDB.EventHandlers;
 using LothiumDB.Linq;
-using LothiumDB.Tools;
 using LothiumDB.Exceptions;
 
 namespace LothiumDB;

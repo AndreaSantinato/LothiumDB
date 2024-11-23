@@ -1,6 +1,4 @@
-﻿using LothiumDB.Tools;
-
-namespace LothiumDB.Tests.Testers;
+﻿namespace LothiumDB.Tests.Testers;
 
 public static class TestTransactionMethods
 {
