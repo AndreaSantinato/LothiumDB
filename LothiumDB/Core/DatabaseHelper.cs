@@ -106,63 +106,32 @@ internal static class DatabaseHelper
         object[] args
     )
     {
-        foreach (var variable in ExtractVariablesFromQuery(sql, args))
+        foreach (var param in ExtractVariablesFromQuery(sql, args))
         {
-            var param = command.CreateParameter();
-                
-            param.ParameterName = variable.Key;
-            param.Value = variable.Value;
-
-            // Define the type of the parameter
-            if (param.Value.GetType() == typeof(object))
+            var dbParameter = command.CreateParameter();
+            
+            dbParameter.ParameterName = param.Key;
+            dbParameter.Value = param.Value;
+            
+            dbParameter.DbType = param.Value switch
             {
-                param.DbType = DbType.Object;
-            }
-            else
-                switch (param.Value)
-                {
-                    case bool:
-                        param.DbType = DbType.Boolean;
-                        break;
-                    case byte:
-                        param.DbType = DbType.Byte;
-                        break;
-                    case string:
-                        param.DbType = DbType.String;
-                        break;
-                    case short:
-                    case ushort:
-                        param.DbType = DbType.Int16;
-                        break;
-                    case int:
-                    case uint:
-                        param.DbType = DbType.Int32;
-                        break;
-                    case long:
-                    case ulong:
-                        param.DbType = DbType.Int64;
-                        break;
-                    case double:
-                        param.DbType = DbType.Double;
-                        break;
-                    case decimal:
-                        param.DbType = DbType.Decimal;
-                        break;
-                    case Guid:
-                        param.DbType = DbType.Guid;
-                        break;
-                    case DateOnly:
-                        param.DbType = DbType.Date;
-                        break;
-                    case DateTime:
-                        param.DbType = DbType.DateTime;
-                        break;
-                    default:
-                        break;
-                }
+                null => DbType.Object,
+                bool => DbType.Boolean,
+                byte => DbType.Byte,
+                string => DbType.String,
+                short or ushort => DbType.Int16,
+                int or uint => DbType.Int32, 
+                long or ulong => DbType.Int64,
+                double => DbType.Double,
+                decimal => DbType.Decimal,
+                Guid => DbType.Guid,
+                DateOnly => DbType.Date,
+                DateTime => DbType.DateTime,
+                _ => DbType.Object
+            };
 
             // Add the created parameter to the final database command
-            command.Parameters.Add(param);
+            command.Parameters.Add(dbParameter);
         }
     }
     

@@ -4,6 +4,8 @@ namespace LothiumDB;
 
 public sealed class SqlBuilder : IDisposable
 {
+    private bool _disposed;
+    
     #region Class Property
 
     /// <summary>
@@ -38,13 +40,23 @@ public sealed class SqlBuilder : IDisposable
         if (args.Length != 0) 
             UpdateParameters(args);
     }
-    
+
     /// <summary>
     /// Dispose the Sql Object instance previously created
     /// </summary>
     // ReSharper disable once GCSuppressFinalizeForTypeWithoutDestructor
-    public void Dispose() 
-        => GC.SuppressFinalize(this);
+    public void Dispose()
+    {
+        if (!_disposed)
+        {
+            Query = string.Empty;
+            Params = [];
+        }
+        
+        _disposed = true;
+        
+        GC.SuppressFinalize(this);
+    }
 
     #endregion
 
