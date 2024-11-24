@@ -1,5 +1,4 @@
 using System.Data;
-using LothiumDB.Enumerations;
 using LothiumDB.Exceptions;
 
 namespace LothiumDB;

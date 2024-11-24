@@ -1,4 +1,4 @@
-namespace LothiumDB.Enumerations;
+namespace LothiumDB;
 
 /// <summary>
 /// Define all the different types of operation available inside the Database class
@@ -11,4 +11,18 @@ public enum DatabaseOperationTypesEnum
     ExecuteQueryAsync = 4,
     Query = 5,
     QueryAsync = 6,
+}
+
+/// <summary>
+/// Indicates the type of Database's Provider
+/// </summary>
+public enum DatabaseProviderTypesEnum
+{
+    None = 0,
+    MicrosoftSqlServer = 1,
+    MySql = 2,
+    MariaDb = 3,
+    PostgreSql = 4,
+    Oracle = 5,
+    Firebird = 6
 }

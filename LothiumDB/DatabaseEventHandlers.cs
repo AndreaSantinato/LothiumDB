@@ -1,7 +1,4 @@
-using System.Data.Common;
-using LothiumDB.Enumerations;
-
-namespace LothiumDB.EventHandlers;
+namespace LothiumDB;
 
 /// <summary>
 /// Events Args correlated to a database command
@@ -14,4 +11,15 @@ public class DatabaseCommandEventArgs(DatabaseOperationTypesEnum operation, stri
     public DatabaseOperationTypesEnum Operation = operation;
     public string Query = query;
     public object[] Parameters = parameters;
+}
+
+/// <summary>
+/// Events Arguments correlated to a generated exception
+/// </summary>
+/// <param name="operation">Indicates the type of operation where the exception got generated</param>
+/// <param name="exception">Contains the actual generated exception</param>
+public class DatabaseExceptionEventArgs(DatabaseOperationTypesEnum operation, Exception exception) : EventArgs
+{
+    public DatabaseOperationTypesEnum Operation { get; set; } = operation;
+    public Exception Exception { get; set; } = exception;
 }

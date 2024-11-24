@@ -1,6 +1,5 @@
 ﻿using System.Data.SqlClient;
 using LothiumDB;
-using LothiumDB.Enumerations;
 using LothiumDB.Tests.Testers;
 
 Console.WriteLine("[I] Start Testing Console Project");

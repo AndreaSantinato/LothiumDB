@@ -34,6 +34,8 @@
     <None Remove="Data\**" />
     <None Remove="Providers\**" />
     <None Remove="Core\Interfaces\**" />
+    <None Remove="Enumerations\**" />
+    <None Remove="EventHandlers\**" />
   </ItemGroup>
   <ItemGroup>
     <Compile Remove="Core\LothiumObject.cs" />
@@ -56,11 +58,19 @@
     <Compile Remove="Core\Interfaces\IProvider.cs" />
     <Compile Remove="Core\Interfaces\IDatabaseCore.cs" />
     <Compile Remove="Core\Interfaces\**" />
+    <Compile Remove="IDatabaseTransaction.cs" />
+    <Compile Remove="IDatabaseCommands.cs" />
+    <Compile Remove="IDatabaseConnection.cs" />
+    <Compile Remove="IDatabaseExtendedCommands.cs" />
+    <Compile Remove="Enumerations\**" />
+    <Compile Remove="EventHandlers\**" />
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Remove="Data\**" />
     <EmbeddedResource Remove="Providers\**" />
     <EmbeddedResource Remove="Core\Interfaces\**" />
+    <EmbeddedResource Remove="Enumerations\**" />
+    <EmbeddedResource Remove="EventHandlers\**" />
   </ItemGroup>
   <ItemGroup>
     <None Include="LothiumDB\LothiumDB.png">

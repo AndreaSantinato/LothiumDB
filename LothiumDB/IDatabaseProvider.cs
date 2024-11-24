@@ -1,5 +1,3 @@
-using LothiumDB.Enumerations;
-
 namespace LothiumDB;
 
 public interface IDatabaseProvider
