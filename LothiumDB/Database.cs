@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Data;
-using LothiumDB.Core;
+using System.Data.Common;
+using LothiumDB.Helpers;
 using LothiumDB.Linq;
 using LothiumDB.Exceptions;
 
@@ -27,7 +28,7 @@ public class Database : IDatabase
     /// Indicates if the current database instance connection is open
     /// </summary>
     public bool IsConnectionOpen
-        => DatabaseHelper.CheckConnectionStatus(_connection);
+        => Utility.CheckConnectionStatus(_connection);
     
     /// <summary>
     /// Contains the complete last executed query with all parameters replace
@@ -169,7 +170,7 @@ public class Database : IDatabase
     
     #endregion Constructors & Destructors
     
-    #region Connection & Transaction Methods
+    #region Connection & Transaction Sync Methods
     
     /// <summary>
     /// Open a new connection to the chosen database's instance
@@ -179,7 +180,7 @@ public class Database : IDatabase
         if (_connectionDepth == 0)
         {
             if (_transaction is not null) return;
-            if (DatabaseHelper.CheckConnectionStatus(_connection)) return;
+            if (Utility.CheckConnectionStatus(_connection)) return;
             
             if (_connection.State == ConnectionState.Broken)
                 _connection.Close();
@@ -204,7 +205,7 @@ public class Database : IDatabase
 
         if (_connectionDepth != 0) return;
         if (_transaction is not null) return;
-        if (!DatabaseHelper.CheckConnectionStatus(_connection)) return;
+        if (!Utility.CheckConnectionStatus(_connection)) return;
             
         _connection.Close();
     }
@@ -267,7 +268,8 @@ public class Database : IDatabase
     public void CommitTransaction()
         => SafeCloseAndCleanUpTransaction(false);
     
-#if ASYNC
+    #endregion
+    #region Connection & Transaction Async Methods
     
     /// <summary>
     /// Open a new asynchronous connection to the chosen database's instance
@@ -283,7 +285,7 @@ public class Database : IDatabase
         if (_connectionDepth == 0)
         {
             if (_transaction is not null) return;
-            if (DatabaseHelper.CheckConnectionStatus(_connection)) return;
+            if (Utility.CheckConnectionStatus(_connection)) return;
             
             if (_connection.State == ConnectionState.Broken)
                 _connection.Close();
@@ -319,7 +321,7 @@ public class Database : IDatabase
 
         if (_connectionDepth != 0) return;
         if (_transaction is not null) return;
-        if (!DatabaseHelper.CheckConnectionStatus(_connection)) return;
+        if (!Utility.CheckConnectionStatus(_connection)) return;
 
         try
         {
@@ -396,11 +398,9 @@ public class Database : IDatabase
     public async Task CommitTransactionAsync()
         => await Task.Run(() => SafeCloseAndCleanUpTransaction(false));
     
-#endif
+    #endregion Connection & Transaction Async Methods
     
-    #endregion
-    
-    #region  Scalar, ScalarAsync Commands
+    #region  Scalar & ScalarAsync
     
     private object? InternalScalarOperation<T>(DatabaseOperationTypesEnum operationType, string sql, object[] args)
     {
@@ -414,7 +414,7 @@ public class Database : IDatabase
             {
                 OnCommandExecution(operationType, sql, args);
             
-                using var cmd = DatabaseHelper.CreateDatabaseCommand(
+                using var cmd = Utility.CreateDatabaseCommand(
                     _provider,
                     _connection,
                     _transaction,
@@ -425,7 +425,7 @@ public class Database : IDatabase
                 );
                 ArgumentNullException.ThrowIfNull(cmd, nameof(cmd));
 
-                result = DatabaseHelper.PerformScalarCommand<T>(cmd);
+                result = CommandManager.PerformScalarCommand<T>(cmd);
             }
             finally
             {
@@ -443,29 +443,7 @@ public class Database : IDatabase
 
         return (T?)result;
     }
-
-    /// <summary>
-    /// Invoke the DB Scalar command in the Database Instance and return a single value of a specific object type
-    /// </summary>
-    /// <typeparam name="T">Contains the type for the returned object</typeparam>
-    /// <param name="sql">Contains the query command to be executed</param>
-    /// <param name="args">Contains all the extra arguments of the query</param>
-    /// <returns>A value based of the object type</returns>
-    public object? Scalar<T>(string sql, object[] args)
-        => InternalScalarOperation<T>(DatabaseOperationTypesEnum.Scalar, sql, args);
-
-    /// <summary>
-    /// Invoke the DB Scalar command in the Database Instance and return a single value of a specific object type
-    /// </summary>
-    /// <typeparam name="T">Contains the type for the returned object</typeparam>
-    /// <param name="sql">Contains the SQL object</param>
-    /// <returns>A value based of the object type</returns>
-    public object? Scalar<T>(SqlBuilder sql) 
-        => InternalScalarOperation<T>(DatabaseOperationTypesEnum.Scalar, sql.Query, sql.Params);
-    
-#if ASYNC
-    
-    private async Task<object?> InternalScalarOperationAsync<T>(CancellationToken cancellationToken, DatabaseOperationTypesEnum operationType, string sql, object[] args)
+    private async Task<object?> InternalScalarOperationAsync<T>(DatabaseOperationTypesEnum operationType, string sql, object[] args, CancellationToken cancellationToken)
     {
         object? result = null;
 
@@ -477,7 +455,7 @@ public class Database : IDatabase
             {
                 OnCommandExecution(operationType, sql, args);
             
-                using var cmd = DatabaseHelper.CreateDatabaseCommand(
+                using var cmd = Utility.CreateDatabaseCommand(
                     _provider,
                     _connection,
                     _transaction,
@@ -488,7 +466,7 @@ public class Database : IDatabase
                 );
                 ArgumentNullException.ThrowIfNull(cmd, nameof(cmd));
 
-                result = await DatabaseHelper.PerformScalarCommand<T>((DbCommand)cmd, cancellationToken).ConfigureAwait(false);
+                result = await CommandManager.PerformScalarCommandAsync<T>((DbCommand)cmd, cancellationToken);
             }
             finally
             {
@@ -506,6 +484,25 @@ public class Database : IDatabase
 
         return (T?)result;
     }
+    
+    /// <summary>
+    /// Invoke the DB Scalar command in the Database Instance and return a single value of a specific object type
+    /// </summary>
+    /// <typeparam name="T">Contains the type for the returned object</typeparam>
+    /// <param name="sql">Contains the query command to be executed</param>
+    /// <param name="args">Contains all the extra arguments of the query</param>
+    /// <returns>A value based of the object type</returns>
+    public object? Scalar<T>(string sql, params object[] args)
+        => InternalScalarOperation<T>(DatabaseOperationTypesEnum.Scalar, sql, args);
+
+    /// <summary>
+    /// Invoke the DB Scalar command in the Database Instance and return a single value of a specific object type
+    /// </summary>
+    /// <typeparam name="T">Contains the type for the returned object</typeparam>
+    /// <param name="sql">Contains the SQL object</param>
+    /// <returns>A value based of the object type</returns>
+    public object? Scalar<T>(SqlBuilder sql) 
+        => InternalScalarOperation<T>(DatabaseOperationTypesEnum.Scalar, sql.Query, sql.Params);
 
     /// <summary>
     /// Invoke the DB Scalar command in the Database Instance and return a single value of a specific object type
@@ -514,19 +511,19 @@ public class Database : IDatabase
     /// <param name="sql">Contains the query command to be executed</param>
     /// <param name="args">Contains all the extra arguments of the query</param>
     /// <returns>A value based of the object type</returns>
-    public async Task<object?> ScalarAsync<T>(string sql, object[] args)
-        => await InternalScalarOperationAsync<T>(CancellationToken.None, DatabaseOperationTypesEnum.ScalarAsync, sql, args).ConfigureAwait(false);
+    public async Task<object?> ScalarAsync<T>(string sql, params object[] args)
+        => await ScalarAsync<T>(sql, CancellationToken.None, args);
 
     /// <summary>
     /// Invoke the DB Scalar command in the Database Instance and return a single value of a specific object type
     /// </summary>
     /// <typeparam name="T">Contains the type for the returned object</typeparam>
+    /// <param name="sql">Contains the query command to be executed</param>
     /// <param name="cancellationToken">Contains a token that will be used to cancel the operation</param>
-    /// <param name="sql">Contains the query command to be executed</param>
     /// <param name="args">Contains all the extra arguments of the query</param>
     /// <returns>A value based of the object type</returns>
-    public async Task<object?> ScalarAsync<T>(CancellationToken cancellationToken, string sql, object[] args)
-        => await InternalScalarOperationAsync<T>(cancellationToken, DatabaseOperationTypesEnum.ScalarAsync, sql, args).ConfigureAwait(false);
+    public async Task<object?> ScalarAsync<T>(string sql, CancellationToken cancellationToken, params object[] args)
+        => await InternalScalarOperationAsync<T>(DatabaseOperationTypesEnum.ScalarAsync, sql, args, cancellationToken).ConfigureAwait(false);
     
     /// <summary>
     /// Invoke the DB Scalar command in the Database Instance and return a single value of a specific object type
@@ -535,25 +532,23 @@ public class Database : IDatabase
     /// <param name="sql">Contains the SQL object</param>
     /// <returns>A value based of the object type</returns>
     public async Task<object?> ScalarAsync<T>(SqlBuilder sql) 
-        => await InternalScalarOperationAsync<T>(CancellationToken.None, DatabaseOperationTypesEnum.ScalarAsync, sql.Query, sql.Params).ConfigureAwait(false);
+        => await ScalarAsync<T>(sql, CancellationToken.None);
     
     /// <summary>
     /// Invoke the DB Scalar command in the Database Instance and return a single value of a specific object type
     /// </summary>
     /// <typeparam name="T">Contains the type for the returned object</typeparam>
-    /// <param name="cancellationToken">Contains a token that will be used to cancel the operation</param>
     /// <param name="sql">Contains the SQL object</param>
+    /// <param name="cancellationToken">Contains a token that will be used to cancel the operation</param>
     /// <returns>A value based of the object type</returns>
-    public async Task<object?> ScalarAsync<T>(CancellationToken cancellationToken, SqlBuilder sql) 
-        => await InternalScalarOperationAsync<T>(cancellationToken, DatabaseOperationTypesEnum.ScalarAsync, sql.Query, sql.Params).ConfigureAwait(false);
+    public async Task<object?> ScalarAsync<T>(SqlBuilder sql, CancellationToken cancellationToken) 
+        => await InternalScalarOperationAsync<T>(DatabaseOperationTypesEnum.ScalarAsync, sql.Query, sql.Params, cancellationToken).ConfigureAwait(false);
     
-#endif
+    #endregion  ScalarAsync Commands
 
-    #endregion
+    #region Execute & ExecuteAsync
 
-    #region Execute, ExecuteAsync Commands
-
-    private int InternalExecuteOperation(DatabaseOperationTypesEnum operationType, string sql, params object[] args)
+    private int InternalExecuteOperation(DatabaseOperationTypesEnum operationType, string sql, object[] args)
     {
         var affectedRowOnCommand = 0;
 
@@ -565,7 +560,7 @@ public class Database : IDatabase
             {
                 OnCommandExecution(operationType, sql, args);
 
-                using var cmd = DatabaseHelper.CreateDatabaseCommand(
+                using var cmd = Utility.CreateDatabaseCommand(
                     _provider,
                     _connection,
                     _transaction,
@@ -575,13 +570,53 @@ public class Database : IDatabase
                     args
                 );
             
-                affectedRowOnCommand = DatabaseHelper.PerformExecuteCommand(cmd);
+                affectedRowOnCommand = CommandManager.PerformExecuteCommand(cmd);
             }
             finally
             {
                 LastSql = OnCommandCompleted(operationType, sql, args);
             
                 CloseConnection();
+            }   
+        }
+        catch (Exception ex)
+        {
+            LastError = OnGeneratedError(operationType, ex);
+            
+            affectedRowOnCommand = -1;
+        }
+
+        return affectedRowOnCommand;
+    }
+    private async Task<int> InternalExecuteOperationAsync(DatabaseOperationTypesEnum operationType, string sql, object[] args, CancellationToken cancellationToken)
+    {
+        var affectedRowOnCommand = 0;
+
+        try
+        {
+            await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+
+            try
+            {
+                OnCommandExecution(operationType, sql, args);
+
+                using var cmd = Utility.CreateDatabaseCommand(
+                    _provider,
+                    _connection,
+                    _transaction,
+                    CommandType.Text,
+                    _commandTimeout,
+                    sql,
+                    args
+                );
+
+                affectedRowOnCommand = await CommandManager.PerformExecuteCommandAsync((DbCommand)cmd, cancellationToken);
+            }
+            finally
+            {
+                LastSql = OnCommandCompleted(operationType, sql, args);
+            
+                await CloseConnectionAsync();
             }   
         }
         catch (Exception ex)
@@ -611,49 +646,6 @@ public class Database : IDatabase
     public int Execute(SqlBuilder sql)
         => InternalExecuteOperation(DatabaseOperationTypesEnum.ExecuteQuery, sql.Query, sql.Params);
 
-#if ASYNC
-    
-    private async Task<int> InternalExecuteOperationAsync(CancellationToken cancellationToken, DatabaseOperationTypesEnum operationType, string sql, params object[] args)
-    {
-        var affectedRowOnCommand = 0;
-
-        try
-        {
-            await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
-
-            try
-            {
-                OnCommandExecution(operationType, sql, args);
-
-                using var cmd = DatabaseHelper.CreateDatabaseCommand(
-                    _provider,
-                    _connection,
-                    _transaction,
-                    CommandType.Text,
-                    _commandTimeout,
-                    sql,
-                    args
-                );
-
-                affectedRowOnCommand = await DatabaseHelper.PerformExecuteCommandAsync((DbCommand)cmd, cancellationToken).ConfigureAwait(false);
-            }
-            finally
-            {
-                LastSql = OnCommandCompleted(operationType, sql, args);
-            
-                await CloseConnectionAsync();
-            }   
-        }
-        catch (Exception ex)
-        {
-            LastError = OnGeneratedError(operationType, ex);
-            
-            affectedRowOnCommand = -1;
-        }
-
-        return affectedRowOnCommand;
-    }
-
     /// <summary>
     /// Invoke the DB NonQuery command in the Database Instance and return the number of completed operations
     /// </summary>
@@ -661,25 +653,25 @@ public class Database : IDatabase
     /// <param name="args">Contains all the extra arguments of the query</param>
     /// <returns>An int value that count all the affected table rows</returns>
     public async Task<int> ExecuteAsync(string sql, params object[] args)
-        => await InternalExecuteOperationAsync(CancellationToken.None, DatabaseOperationTypesEnum.ExecuteQueryAsync, sql, args).ConfigureAwait(false);
+        => await ExecuteAsync(sql, CancellationToken.None, args);
 
     /// <summary>
     /// Invoke the DB NonQuery command in the Database Instance and return the number of completed operations
     /// </summary>
-    /// <param name="cancellationToken">Contains a token to cancel the asynchronous calling</param>
     /// <param name="sql">Contains the query command to be executed</param>
+    /// <param name="cancellationToken">Contains a token to cancel the asynchronous calling</param>
     /// <param name="args">Contains all the extra arguments of the query</param>
     /// <returns>An int value that count all the affected table rows</returns>
-    public async Task<int> ExecuteAsync(CancellationToken cancellationToken, string sql, params object[] args)
-        => await InternalExecuteOperationAsync(cancellationToken, DatabaseOperationTypesEnum.ExecuteQueryAsync, sql, args).ConfigureAwait(false);
-    
+    public async Task<int> ExecuteAsync(string sql, CancellationToken cancellationToken, params object[] args)
+        => await InternalExecuteOperationAsync(DatabaseOperationTypesEnum.ExecuteQueryAsync, sql, args, cancellationToken).ConfigureAwait(false);
+
     /// <summary>
     /// Invoke the DB NonQuery command in the Database Instance and return the number of completed operations
     /// </summary>
     /// <param name="sql">Contains the SQL object</param>
     /// <returns>An int value that count all the affected table rows</returns>
     public async Task<int> ExecuteAsync(SqlBuilder sql)
-        => await InternalExecuteOperationAsync(CancellationToken.None, DatabaseOperationTypesEnum.ExecuteQueryAsync, sql.Query, sql.Params).ConfigureAwait(false);
+        => await ExecuteAsync(sql, CancellationToken.None);
     
     /// <summary>
     /// Invoke the DB NonQuery command in the Database Instance and return the number of completed operations
@@ -687,18 +679,16 @@ public class Database : IDatabase
     /// <param name="cancellationToken">Contains a token to cancel the asynchronous calling</param>
     /// <param name="sql">Contains the SQL object</param>
     /// <returns>An int value that count all the affected table rows</returns>
-    public async Task<int> ExecuteAsync(CancellationToken cancellationToken, SqlBuilder sql)
-        => await InternalExecuteOperationAsync(cancellationToken, DatabaseOperationTypesEnum.ExecuteQueryAsync, sql.Query, sql.Params).ConfigureAwait(false);
+    public async Task<int> ExecuteAsync(SqlBuilder sql, CancellationToken cancellationToken)
+        => await InternalExecuteOperationAsync(DatabaseOperationTypesEnum.ExecuteQueryAsync, sql.Query, sql.Params, cancellationToken).ConfigureAwait(false);
     
-#endif
-        
-    #endregion
-
-    #region Query, QueryAsync Commands
-
-    private IEnumerable<T>? InternalQueryOperation<T>(DatabaseOperationTypesEnum operationType, string sql, params object[] args)
+    #endregion ExecuteAsync Commands
+    
+    #region Query/QueryAsync & StoredProcedure/StoredProcedureAsync
+    
+    private IEnumerable<T> InternalQueryOperation<T>(DatabaseOperationTypesEnum operationType, string sql, object[] args)
     {
-        List<T> result;
+        IEnumerable<T> result;
 
         try
         {
@@ -706,21 +696,22 @@ public class Database : IDatabase
 
             try
             {
-                var type = typeof(T);
-                var mapper = new AutoMapper(type);
-                var props = AutoMapper.GetMappedProperties<T>();
+                var cmdType = (
+                    operationType.Equals(DatabaseOperationTypesEnum.StoredProcedure) || 
+                    operationType.Equals(DatabaseOperationTypesEnum.StoredProcedureAsync)
+                ) ? CommandType.StoredProcedure : CommandType.Text;
 
-                using var cmd = DatabaseHelper.CreateDatabaseCommand(
+                using var cmd = Utility.CreateDatabaseCommand(
                     _provider,
                     _connection,
                     _transaction,
-                    CommandType.Text,
+                    cmdType,
                     _commandTimeout,
                     sql,
                     args
                 );
 
-                result = (List<T>)DatabaseHelper.PerformQueryCommand<T>(cmd);
+                result = (List<T>)CommandManager.PerformQueryCommand<T>(cmd);
             }
             finally
             {
@@ -735,61 +726,37 @@ public class Database : IDatabase
         {
             LastError = OnGeneratedError(operationType, ex);
             
-            result = Enumerable
-                .Empty<T>()
-                .ToList();
+            result = [];
         }
 
         return result;
     }
-    
-    /// <summary>
-    /// Invoke the DB Query command in the Database Instance and cast it to a specific object type
-    /// </summary>
-    /// <typeparam name="T">Contains the type for the returned object</typeparam>
-    /// <param name="sql">Contains the query command to be executed</param>
-    /// <param name="args">Contains all the extra arguments of the query</param>
-    /// <returns>A value based of the object type</returns>
-    public IEnumerable<T>? Query<T>(string sql, params object[] args)
-        => InternalQueryOperation<T>(DatabaseOperationTypesEnum.Query, sql, args);
-
-    /// <summary>
-    /// Invoke the DB Query command in the Database Instance and cast it to a specific object type
-    /// </summary>
-    /// <typeparam name="T">Contains the type for the returned object</typeparam>
-    /// <param name="sql">Contains the SQL object</param>
-    /// <returns>A value based of the object type</returns>
-    public IEnumerable<T>? Query<T>(SqlBuilder sql) 
-        => InternalQueryOperation<T>(DatabaseOperationTypesEnum.Query, sql.Query, sql.Params);
-
-#if ASYNC
-
-    private async Task<IEnumerable<T>?> InternalQueryOperationAsync<T>(
-        CancellationToken cancellationToken,
-        DatabaseOperationTypesEnum operationType,
-        string sql,
-        params object[] args
-    )
+    private async Task<IEnumerable<T>> InternalQueryOperationAsync<T>(DatabaseOperationTypesEnum operationType, string sql, object[] args, CancellationToken cancellationToken)
     {
-        List<T> result;
+        IEnumerable<T> result;
 
         try
         {
-            OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+            await OpenConnectionAsync(cancellationToken);
 
             try
             {
-                using var cmd = DatabaseHelper.CreateDatabaseCommand(
+                var cmdType = (
+                    operationType.Equals(DatabaseOperationTypesEnum.StoredProcedure) || 
+                    operationType.Equals(DatabaseOperationTypesEnum.StoredProcedureAsync)
+                ) ? CommandType.StoredProcedure : CommandType.Text;
+
+                using var cmd = Utility.CreateDatabaseCommand(
                     _provider,
                     _connection,
                     _transaction,
-                    CommandType.Text,
+                    cmdType,
                     _commandTimeout,
                     sql,
                     args
                 );
 
-                result = (List<T>)await DatabaseHelper.PerformQueryCommandAsync<T>((DbCommand)cmd, cancellationToken);
+                result = (List<T>)await CommandManager.PerformQueryCommandAsync<T>((DbCommand)cmd, cancellationToken);
             }
             finally
             {
@@ -804,9 +771,7 @@ public class Database : IDatabase
         {
             LastError = OnGeneratedError(operationType, ex);
             
-            result = Enumerable
-                .Empty<T>()
-                .ToList();
+            result = [];
         }
 
         return result;
@@ -819,31 +784,159 @@ public class Database : IDatabase
     /// <param name="sql">Contains the query command to be executed</param>
     /// <param name="args">Contains all the extra arguments of the query</param>
     /// <returns>A value based of the object type</returns>
-    public async Task<IEnumerable<T>?> QueryAsync<T>(string sql, params object[] args)
-        => await InternalQueryOperationAsync<T>(CancellationToken.None, DatabaseOperationTypesEnum.Query, sql, args);
+    public IEnumerable<T> Query<T>(string sql, params object[] args)
+        => InternalQueryOperation<T>(DatabaseOperationTypesEnum.Query, sql, args);
 
     /// <summary>
     /// Invoke the DB Query command in the Database Instance and cast it to a specific object type
     /// </summary>
     /// <typeparam name="T">Contains the type for the returned object</typeparam>
-    /// <param name="cancellationToken">Contains a token to cancel the current operation</param>
-    /// <param name="sql">Contains the query command to be executed</param>
+    /// <param name="sql">Contains the SQL builder</param>
+    /// <returns>A value based of the object type</returns>
+    public IEnumerable<T> Query<T>(SqlBuilder sql) 
+        => InternalQueryOperation<T>(DatabaseOperationTypesEnum.Query, sql.Query, sql.Params);
+
+    /// <summary>
+    /// Invoke the DB Query command in the Database Instance after the execution of a stored procedure
+    /// and cast it to a specific object type similar to the Query command
+    /// </summary>
+    /// <typeparam name="T">Contains the type for the returned object</typeparam>
+    /// <param name="name">Contains the unique name of the procedure</param>
     /// <param name="args">Contains all the extra arguments of the query</param>
     /// <returns>A value based of the object type</returns>
-    public async Task<IEnumerable<T>?> QueryAsync<T>(CancellationToken cancellationToken, string sql, params object[] args)
-        => await InternalQueryOperationAsync<T>(cancellationToken, DatabaseOperationTypesEnum.Query, sql, args);
+    public IEnumerable<T> StoredProcedure<T>(string name, params object[] args)
+        => StoredProcedure<T>(name, "dbo", args);
+    
+    /// <summary>
+    /// Invoke the DB Query command in the Database Instance after the execution of a stored procedure
+    /// and cast it to a specific object type similar to the Query command
+    /// </summary>
+    /// <typeparam name="T">Contains the type for the returned object</typeparam>
+    /// <param name="name">Contains the unique name of the procedure</param>
+    /// <param name="schema">Contains a specific schema associated to the procedure</param>
+    /// <param name="args">Contains all the extra arguments of the query</param>
+    /// <returns>A value based of the object type</returns>
+    public IEnumerable<T> StoredProcedure<T>(string name, string schema, params object[] args)
+        => InternalQueryOperation<T>(DatabaseOperationTypesEnum.StoredProcedure, $"{schema}.{name}", args);
+
+    /// <summary>
+    /// Invoke the DB Query command in the Database Instance after the execution of a stored procedure
+    /// and cast it to a specific object type similar to the Query command
+    /// </summary>
+    /// <typeparam name="T">Contains the type for the returned object</typeparam>
+    /// <param name="procedure">Contains the Stored Procedure builder</param>
+    /// <returns>A value based of the object type</returns>
+    public IEnumerable<T> StoredProcedure<T>(StoredProcedureBuilder procedure)
+        => InternalQueryOperation<T>(DatabaseOperationTypesEnum.StoredProcedure, procedure.Procedure.Item1, procedure.Procedure.Item2);
     
     /// <summary>
     /// Invoke the DB Query command in the Database Instance and cast it to a specific object type
     /// </summary>
     /// <typeparam name="T">Contains the type for the returned object</typeparam>
+    /// <param name="sql">Contains the query command to be executed</param>
+    /// <param name="args">Contains all the extra arguments of the query</param>
+    /// <returns>A value based of the object type</returns>
+    public async Task<IEnumerable<T>> QueryAsync<T>(string sql, params object[] args)
+        => await QueryAsync<T>(sql, CancellationToken.None, args);
+
+    /// <summary>
+    /// Invoke the DB Query command in the Database Instance and cast it to a specific object type
+    /// </summary>
+    /// <typeparam name="T">Contains the type for the returned object</typeparam>
+    /// <param name="sql">Contains the query command to be executed</param>
     /// <param name="cancellationToken">Contains a token to cancel the current operation</param>
+    /// <param name="args">Contains all the extra arguments of the query</param>
+    /// <returns>A value based of the object type</returns>
+    public async Task<IEnumerable<T>> QueryAsync<T>(string sql, CancellationToken cancellationToken, params object[] args)
+        => await InternalQueryOperationAsync<T>(DatabaseOperationTypesEnum.Query, sql, args, cancellationToken);
+    
+    /// <summary>
+    /// Invoke the DB Query command in the Database Instance and cast it to a specific object type
+    /// </summary>
+    /// <typeparam name="T">Contains the type for the returned object</typeparam>
     /// <param name="sql">Contains the SQL object</param>
     /// <returns>A value based of the object type</returns>
-    public async Task<IEnumerable<T>?> QueryAsync<T>(CancellationToken cancellationToken, SqlBuilder sql) 
-        => await InternalQueryOperationAsync<T>(cancellationToken, DatabaseOperationTypesEnum.Query, sql.Query, sql.Params);
+    public async Task<IEnumerable<T>> QueryAsync<T>(SqlBuilder sql) 
+        => await QueryAsync<T>(sql, CancellationToken.None);
+    
+    /// <summary>
+    /// Invoke the DB Query command in the Database Instance and cast it to a specific object type
+    /// </summary>
+    /// <typeparam name="T">Contains the type for the returned object</typeparam>
+    /// <param name="sql">Contains the SQL object</param>
+    /// /// <param name="cancellationToken">Contains a token to cancel the current operation</param>
+    /// <returns>A value based of the object type</returns>
+    public async Task<IEnumerable<T>> QueryAsync<T>(SqlBuilder sql, CancellationToken cancellationToken) 
+        => await InternalQueryOperationAsync<T>(DatabaseOperationTypesEnum.Query, sql.Query, sql.Params, cancellationToken);
 
-#endif
+    /// <summary>
+    /// Invoke the DB Query command in the Database Instance after the execution of a stored procedure
+    /// and cast it to a specific object type similar to the Query command
+    /// </summary>
+    /// <typeparam name="T">Contains the type for the returned object</typeparam>
+    /// <param name="name">Contains the unique name of the procedure</param>
+    /// <param name="args">Contains all the extra arguments of the query</param>
+    /// <returns>A value based of the object type</returns>
+    public async Task<IEnumerable<T>> StoredProcedureAsync<T>(string name, params object[] args)
+        => await StoredProcedureAsync<T>(name, "dbo", CancellationToken.None, args);
+    
+    /// <summary>
+    /// Invoke the DB Query command in the Database Instance after the execution of a stored procedure
+    /// and cast it to a specific object type similar to the Query command
+    /// </summary>
+    /// <typeparam name="T">Contains the type for the returned object</typeparam>
+    /// <param name="name">Contains the unique name of the procedure</param>
+    /// <param name="cancellationToken">Contains a token to cancel the current operation</param>
+    /// <param name="args">Contains all the extra arguments of the query</param>
+    /// <returns>A value based of the object type</returns>
+    public async Task<IEnumerable<T>> StoredProcedureAsync<T>(string name, CancellationToken cancellationToken, params object[] args)
+        => await StoredProcedureAsync<T>(name, "dbo", cancellationToken, args);
+    
+    /// <summary>
+    /// Invoke the DB Query command in the Database Instance after the execution of a stored procedure
+    /// and cast it to a specific object type similar to the Query command
+    /// </summary>
+    /// <typeparam name="T">Contains the type for the returned object</typeparam>
+    /// <param name="name">Contains the unique name of the procedure</param>
+    /// <param name="schema">Contains a specific schema associated to the procedure</param>
+    /// <param name="args">Contains all the extra arguments of the query</param>
+    /// <returns>A value based of the object type</returns>
+    public async Task<IEnumerable<T>> StoredProcedureAsync<T>(string name, string schema, params object[] args)
+        => await StoredProcedureAsync<T>(name, schema, CancellationToken.None, args);
+    
+    /// <summary>
+    /// Invoke the DB Query command in the Database Instance after the execution of a stored procedure
+    /// and cast it to a specific object type similar to the Query command
+    /// </summary>
+    /// <typeparam name="T">Contains the type for the returned object</typeparam>
+    /// <param name="name">Contains the unique name of the procedure</param>
+    /// <param name="schema">Contains a specific schema associated to the procedure</param>
+    /// <param name="cancellationToken">Contains a token to cancel the current operation</param>
+    /// <param name="args">Contains all the extra arguments of the query</param>
+    /// <returns>A value based of the object type</returns>
+    public async Task<IEnumerable<T>> StoredProcedureAsync<T>(string name, string schema, CancellationToken cancellationToken, params object[] args)
+        => await InternalQueryOperationAsync<T>(DatabaseOperationTypesEnum.StoredProcedureAsync, $"{schema}.{name}", args, cancellationToken);
+    
+    /// <summary>
+    /// Invoke the DB Query command in the Database Instance after the execution of a stored procedure
+    /// and cast it to a specific object type similar to the Query command
+    /// </summary>
+    /// <typeparam name="T">Contains the type for the returned object</typeparam>
+    /// <param name="procedure">Contains the Stored Procedure builder</param>
+    /// <returns>A value based of the object type</returns>
+    public async Task<IEnumerable<T>> StoredProcedureAsync<T>(StoredProcedureBuilder procedure)
+        => await StoredProcedureAsync<T>(procedure, CancellationToken.None);
+    
+    /// <summary>
+    /// Invoke the DB Query command in the Database Instance after the execution of a stored procedure
+    /// and cast it to a specific object type similar to the Query command
+    /// </summary>
+    /// <typeparam name="T">Contains the type for the returned object</typeparam>
+    /// <param name="procedure">Contains the Stored Procedure builder</param>
+    /// <param name="cancellationToken">Contains a token to cancel the current operation</param>
+    /// <returns>A value based of the object type</returns>
+    public async Task<IEnumerable<T>> StoredProcedureAsync<T>(StoredProcedureBuilder procedure, CancellationToken cancellationToken)
+        => await InternalQueryOperationAsync<T>(DatabaseOperationTypesEnum.StoredProcedure, procedure.Procedure.Item1, procedure.Procedure.Item2, cancellationToken);
     
     #endregion
 
@@ -855,7 +948,7 @@ public class Database : IDatabase
     /// <returns>A value based of the object type</returns>
     public List<T>? FindAll<T>()
         => FindAll<T>(AutoMapper.AutoSelectClause<T>());
-
+    
     /// <summary>
     /// Select all the elements inside a table with a specify Sql query
     /// </summary>
@@ -864,16 +957,15 @@ public class Database : IDatabase
     /// <returns>A value based of the object type</returns>
     public List<T>? FindAll<T>(SqlBuilder sql)
         => Query<T>(sql)?.ToList();
-
+    
     /// <summary>
     /// Select all the elements inside a table with a specify Sql query
     /// </summary>
     /// <typeparam name="T">Contains the type for the returned object</typeparam>
-    /// <param name="sql">Contains the query command to be executed</param>
-    /// <param name="args">Contains all the extra arguments of the query</param>
+    /// <param name="procedure">Contains the Stored Procedure builder</param>
     /// <returns>A value based of the object type</returns>
-    public List<T>? FindAll<T>(string sql, params object[] args)
-        => FindAll<T>(new SqlBuilder(sql, args));
+    public List<T>? FindAll<T>(StoredProcedureBuilder procedure)
+        => StoredProcedure<T>(procedure)?.ToList();
 
     #endregion
 
@@ -896,14 +988,17 @@ public class Database : IDatabase
     /// <summary>
     /// Select a single specific element inside a table
     /// </summary>
-    /// <typeparam name="T">Contains the type for the returned object</typeparam>
-    /// <param name="sql">Contains the query command to be executed</param>
-    /// <param name="args">Contains all the extra arguments of the query</param>
+    /// <param name="procedure">Contains the Stored Procedure builder</param>
     /// <returns>A value based of the object type</returns>
-    /// <returns></returns>
-    public T? FindSingle<T>(string sql, params object[] args)
-        => FindSingle<T>(new SqlBuilder(sql, args));
+    public T? FindSingle<T>(StoredProcedureBuilder procedure)
+    {
+        var result = StoredProcedure<T>(procedure);
 
+        return (result is null)
+            ? default
+            : result.ToList().FirstElement();
+    }
+    
     #endregion
 
     #region FetchPage
@@ -941,17 +1036,6 @@ public class Database : IDatabase
         );
     
     }
-
-    /// <summary>
-    /// Generate a Paging List from a PageObject
-    /// </summary>
-    /// <typeparam name="T">Contains the type for the returned object</typeparam>
-    /// <param name="page">Contains the page object</param>
-    /// <param name="sql">Contains the query command to be executed</param>
-    /// <param name="args">Contains all the extra arguments of the query</param>
-    /// <returns>A value based of the object type</returns>
-    public List<T> FetchPage<T>(PageObject<T> page, string sql, params object[] args)
-        => FetchPage<T>(page, new SqlBuilder(sql, args));
 
     #endregion
 

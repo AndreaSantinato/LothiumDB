@@ -1,7 +1,92 @@
-﻿using System.Text;
+using System.Data;
+using System.Text;
+using LothiumDB.Exceptions;
 
-namespace LothiumDB;
+namespace LothiumDB; 
 
+/// <summary>
+/// Builder used to create and defines a new instance of the Database Class
+/// used to perform operations inside a valid active connection
+/// </summary>
+public sealed class DatabaseBuilder
+{
+    private readonly DatabaseConfiguration _configuration = new DatabaseConfiguration()
+    {
+        Type = DatabaseProviderTypesEnum.None,
+        Connection = null,
+        VariablePrefix = "@",
+        CommandTimeout = 30
+    };
+    
+    /// <summary>
+    /// Initialize a new builder that will be used to create a new instance the Database class
+    /// </summary>
+    /// <returns>A new builder with no configuration set</returns>
+    public static DatabaseBuilder CreateBuilder()
+        => new DatabaseBuilder();
+
+    /// <summary>
+    /// Define a new provider for an existing database instance server
+    /// </summary>
+    /// <param name="type">Indicate the provider's type (MSSql, MySql, ecc...)</param>
+    /// <param name="connection">Contains the actual connection object</param>
+    /// <returns>The current builder updated with new configurations</returns>
+    public DatabaseBuilder SetProvider(DatabaseProviderTypesEnum type, IDbConnection connection)
+    {
+        _configuration.Type = type;
+        _configuration.Connection = connection;
+        return this;
+    }
+
+    /// <summary>
+    /// Set a new value that indicates the maximum time to wait for each database command to be executed
+    /// If the operation take much time it will generate an error during the runtime
+    /// </summary>
+    /// <param name="commandTimeOut">The maximum value to wait during the execution of all database operations</param>
+    /// <returns>The current builder updated with new configurations</returns>
+    public DatabaseBuilder SetCommandTimeOut(int commandTimeOut)
+    {
+        _configuration.CommandTimeout = commandTimeOut;
+        return this;
+    }
+
+    /// <summary>
+    /// Set the variable prefix used by the chosen provider
+    /// </summary>
+    /// <param name="variablePrefix">Indicates what type of variable the provider will use inside the sql commands</param>
+    /// <returns>The current builder updated with new configurations</returns>
+    public DatabaseBuilder SetVariablePrefix(string variablePrefix)
+    {
+        _configuration.VariablePrefix = variablePrefix;
+        return this;
+    }
+    
+    /// <summary>
+    /// Create a new instance of the Database class using the provided configurations
+    /// </summary>
+    /// <returns>A new object of the database class</returns>
+    public Database Build()
+    {
+        if (_configuration.Type.Equals(DatabaseProviderTypesEnum.None))
+            throw new DatabaseException("Specify a valid provider's type!");
+        
+        if (_configuration.Connection is null)
+            throw new DatabaseException("Specify a valid connection object!");
+        
+        if (string.IsNullOrEmpty(_configuration.VariablePrefix))
+            throw new DatabaseException("Specify a valid variable prefix!");
+        
+        if (_configuration.CommandTimeout is null or <= 0)
+            throw new DatabaseException("Specify a valid command timeout!");
+        
+        return new Database(_configuration);
+    }
+}
+
+/// <summary>
+/// Contains a set of methods to create a sql query dynamically
+/// with or without the additions of parameters
+/// </summary>
 public sealed class SqlBuilder : IDisposable
 {
     private bool _disposed;
@@ -53,15 +138,20 @@ public sealed class SqlBuilder : IDisposable
             Params = [];
         }
         
-        _disposed = true;
-        
         GC.SuppressFinalize(this);
+        
+        _disposed = true;
     }
 
+    /// <summary>
+    /// Auto Safe Dispose
+    /// </summary>
+    ~SqlBuilder() => Dispose();
+    
     #endregion
 
     #region Core Methods
-
+    
     /// <summary>
     /// Update all the arguments inside the query builder
     /// </summary>
@@ -171,44 +261,50 @@ public sealed class SqlBuilder : IDisposable
 
     #region Query Methods
 
+    private SqlBuilder InternalSelect(int numberOfRows, string[] columns)
+    {
+        var selectTop = (numberOfRows == 0)
+            ? string.Empty 
+            : $"TOP {numberOfRows}";
+        
+        var selectColumns = (columns.Length == 0)
+            ? "*" 
+            : $"{string.Join(", ", columns.Select(x => x.ToString()).ToArray())}";
+        
+        Append($"SELECT {selectTop} {selectColumns}");
+        
+        return this;
+    }
+    
+    /// <summary>
+    /// Select all the columns of a table
+    /// </summary>
+    /// <returns>The current builder updated</returns>
+    public SqlBuilder SelectAll()
+        => InternalSelect(0, []);
+    
+    /// <summary>
+    /// Select the chosen columns of a table
+    /// </summary>
+    /// <param name="columns">Indicates the columns to select</param>
+    /// <returns>The current builder updated</returns>
+    public SqlBuilder Select(params string[] columns)
+        => InternalSelect(0, columns);
+
     /// <summary>
     /// Append a Select Clause to the final Query
     /// </summary>
+    /// <param name="numberOfRows">Contains the number of element to be selected</param>
     /// <param name="columns">Contains all the table's columns</param>
-    /// <returns>An Sql Objects With the Appended Value to the final Query result</returns>
-    public SqlBuilder Select(params object[] columns)
-    {
-        if (!columns.Any())
-        {
-            Append("SELECT *");
-            return this;
-        }
-
-        Append($"SELECT {string.Join(",", columns)}");
-        return this;
-    }
-
-    /// <summary>
-    /// Append a Select Clause to the final Query
-    /// </summary>
-    /// <param name="topElements">Contains the number of element to be selected</param>
-    /// <param name="columns">Contains all the table's columns</param>
-    /// <returns>An Sql Objects With the Appended Value to the final Query result</returns>
-    public SqlBuilder Select(int topElements, params object[] columns)
-    {
-        Append(
-            !columns.Any()
-                ? $"SELECT TOP {topElements} *"
-                : $"SELECT TOP {topElements} {string.Join(", ", columns.Select(x => x.ToString()).ToArray())}"
-        );
-        return this;
-    }
+    /// <returns>A Sql Objects With the Appended Value to the final Query result</returns>
+    public SqlBuilder Select(int numberOfRows, params string[] columns)
+        => InternalSelect(numberOfRows, columns);
 
     /// <summary>
     /// Append a From Clause to the final Query
     /// </summary>
     /// <param name="tables">Contains the names of all the tables</param>
-    /// <returns>An Sql Objects With the Appended Value to the final Query result</returns>
+    /// <returns>A Sql Objects With the Appended Value to the final Query result</returns>
     public SqlBuilder From(params object[] tables)
     {
         Append($"FROM {string.Join(", ", tables.Select(x => x.ToString()).ToArray())}");
@@ -219,7 +315,7 @@ public sealed class SqlBuilder : IDisposable
     /// Append a From Clause to the final Query
     /// </summary>
     /// <param name="sql">Contains a query to nest inside the current query</param>
-    /// <returns>An Sql Objects With the Appended Value to the final Query result</returns>
+    /// <returns>A Sql Objects With the Appended Value to the final Query result</returns>
     public SqlBuilder From(SqlBuilder sql)
     {
         Append($"FROM (\n {sql.Query} \n)");
@@ -231,10 +327,13 @@ public sealed class SqlBuilder : IDisposable
     /// </summary>
     /// <param name="condition">Contains the sql where clause with/without variables</param>
     /// <param name="args">Contains all the variable's value to add</param>
-    /// <returns>An Sql Objects With the Appended Value to the final Query result</returns>
+    /// <returns>A Sql Objects With the Appended Value to the final Query result</returns>
     public SqlBuilder Where(string condition, params object[] args)
     {
-        var clause = Query.Contains("WHERE") ? "AND" : "WHERE";
+        var clause = Query.Contains("WHERE")
+            ? "AND" 
+            : "WHERE";
+        
         Append($"{clause} {condition}", args);
         return this;
     }
@@ -243,7 +342,7 @@ public sealed class SqlBuilder : IDisposable
     /// Append a Group By Clause to the final Query
     /// </summary>
     /// <param name="args">Contains all the arguments to append</param>
-    /// <returns>An Sql Objects With the Appended Value to the final Query result</returns>
+    /// <returns>A Sql Objects With the Appended Value to the final Query result</returns>
     public SqlBuilder GroupBy(params object[] args)
     {
         Append($"GROUP BY {string.Join(", ", args.Select(x => x.ToString()).ToArray())}");
@@ -254,7 +353,7 @@ public sealed class SqlBuilder : IDisposable
     /// Append an Order By Clause to the final Query
     /// </summary>
     /// <param name="args">Contains all the arguments to append</param>
-    /// <returns>An Sql Objects With the Appended Value to the final Query result</returns>
+    /// <returns>A Sql Objects With the Appended Value to the final Query result</returns>
     public SqlBuilder OrderBy(params object[] args)
     {
         Append($"ORDER BY {string.Join(", ", args.Select(x => x.ToString()).ToArray())}");
@@ -265,80 +364,74 @@ public sealed class SqlBuilder : IDisposable
 
     #region Join Methods
 
+    private SqlBuilder InternalJoin(string type, string table)
+    {
+        Append($"{type} JOIN {table}");
+        return this;
+    }
+    
+    private SqlBuilder InternalJoinCondition(string type, string condition, params object[] args)
+    {
+        Append($"{type} {condition}", args);
+        return this;
+    }
+    
     /// <summary>
     /// Append An On Join Clause to the final query
     /// </summary>
     /// <param name="condition">Contains the join main condition</param>
     /// <param name="args">Contains all the condition parameters</param>
-    /// <returns>An Sql Objects With the Appended Value to the final Query result</returns>
+    /// <returns>A Sql Objects With the Appended Value to the final Query result</returns>
     public SqlBuilder On(string condition, params object[] args)
-    {
-        Append($"ON {condition}", args);
-        return this;
-    }
+        => InternalJoinCondition("ON", condition, args);
 
     /// <summary>
     /// Append An And Clause to the final query
     /// </summary>
     /// <param name="condition">Contains the join main condition</param>
     /// <param name="args">Contains all the condition parameters</param>
-    /// <returns>An Sql Objects With the Appended Value to the final Query result</returns>
+    /// <returns>A Sql Objects With the Appended Value to the final Query result</returns>
     public SqlBuilder And(string condition, params object[] args)
-    {
-        Append($"AND {condition}", args);
-        return this;
-    }
+        => InternalJoinCondition("AND", condition, args);
 
     /// <summary>
     /// Append An Or Clause to the final query
     /// </summary>
     /// <param name="condition">Contains the join main condition</param>
     /// <param name="args">Contains all the condition parameters</param>
-    /// <returns>An Sql Objects With the Appended Value to the final Query result</returns>
+    /// <returns>A Sql Objects With the Appended Value to the final Query result</returns>
     public SqlBuilder Or(string condition, params object[] args)
-    {
-        Append($"OR {condition}", args);
-        return this;
-    }
+        => InternalJoinCondition("OR", condition, args);
 
     /// <summary>
     /// Append an Inner Join Clause To the final Query
     /// </summary>
     /// <param name="table">Contains the name of the table to join with</param>
-    /// <returns>An Sql Objects With the Appended Value to the final Query result</returns>
+    /// <returns>A Sql Objects With the Appended Value to the final Query result</returns>
     public SqlBuilder InnerJoin(string table)
-    {
-        Append($"INNER JOIN {table}");
-        return this;
-    }
+        => InternalJoin("INNER", table);
 
     /// <summary>
     /// Append a Left Join Clause To the final Query
     /// </summary>
     /// <param name="table">Contains the name of the table to join with</param>
-    /// <returns>An Sql Objects With the Appended Value to the final Query result</returns>
+    /// <returns>A Sql Objects With the Appended Value to the final Query result</returns>
     public SqlBuilder LeftJoin(string table)
-    {
-        Append($"LEFT JOIN {table}");
-        return this;
-    }
+        => InternalJoin("LEFT", table);
 
     /// <summary>
     /// Append a Right Join Clause To the final Query
     /// </summary>
     /// <param name="table">Contains the name of the table to join with</param>
-    /// <returns>An Sql Objects With the Appended Value to the final Query result</returns>
+    /// <returns>A Sql Objects With the Appended Value to the final Query result</returns>
     public SqlBuilder RightJoin(string table)
-    {
-        Append($"RIGHT JOIN {table}");
-        return this;
-    }
+        => InternalJoin("RIGHT", table);
 
     /// <summary>
     /// Append an Outer Join Clause To the final Query
     /// </summary>
     /// <param name="sql">Contains the outer join query</param>
-    /// <returns>An Sql Objects With the Appended Value to the final Query result</returns>
+    /// <returns>A Sql Objects With the Appended Value to the final Query result</returns>
     public SqlBuilder OuterJoin(SqlBuilder sql)
     {
         Append($"OUTER JOIN {sql.Query}", sql.Params);
@@ -349,7 +442,7 @@ public sealed class SqlBuilder : IDisposable
     /// Append a Left Outer Join Clause To the final Query
     /// </summary>
     /// <param name="sql">Contains the left outer join query</param>
-    /// <returns>An Sql Objects With the Appended Value to the final Query result</returns>
+    /// <returns>A Sql Objects With the Appended Value to the final Query result</returns>
     public SqlBuilder LeftOuterJoin(SqlBuilder sql)
     {
         Append($"LEFT OUTER JOIN {sql.Query}", sql.Params);
@@ -469,4 +562,40 @@ public sealed class SqlBuilder : IDisposable
     }
 
     #endregion
+}
+
+public sealed class StoredProcedureBuilder
+{
+    private string _name = string.Empty;
+    private string _schema = "dbo";
+    private object[] _parameters = [];
+
+    /// <summary>
+    /// Full name of the procedure
+    /// </summary>
+    public Tuple<string, object[]> Procedure
+        => Tuple.Create($"{_schema}.{_name}", _parameters);
+
+    /// <summary>
+    /// Define the name of the procedure to execute
+    /// </summary>
+    /// <param name="name">Unique name needed to execute the procedure</param>
+    /// <returns>The current builder updated</returns>
+    public StoredProcedureBuilder WithName(string name)
+    {
+        _name = name;
+        return this;
+    }
+    
+    /// <summary>
+    /// Define an alternative schema if the default one was changed
+    /// The defaults is dbo
+    /// </summary>
+    /// <param name="schema">Alternative schema needed if the default one is not correct</param>
+    /// <returns>The current builder updated</returns>
+    public StoredProcedureBuilder WithSchema(string schema)
+    {
+        _schema = schema;
+        return this;
+    }
 }

@@ -11,6 +11,8 @@ public enum DatabaseOperationTypesEnum
     ExecuteQueryAsync = 4,
     Query = 5,
     QueryAsync = 6,
+    StoredProcedure = 7,
+    StoredProcedureAsync = 8,
 }
 
 /// <summary>

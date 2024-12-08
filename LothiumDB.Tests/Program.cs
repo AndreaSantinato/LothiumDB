@@ -6,9 +6,9 @@ Console.WriteLine("[I] Start Testing Console Project");
 
 using var db = DatabaseBuilder
     .CreateBuilder()
-    .AddProvider(
+    .SetProvider(
         DatabaseProviderTypesEnum.MicrosoftSqlServer,
-        new SqlConnection(
+        connection: new SqlConnection(
             new SqlConnectionStringBuilder()
             {
                 ConnectRetryCount = 2,
@@ -21,9 +21,9 @@ using var db = DatabaseBuilder
                 Encrypt = false,
                 TrustServerCertificate = false
             }.ConnectionString
-        ),
-        "@"
+        )
     )
+    .SetVariablePrefix("@")
     .SetCommandTimeOut(30)
     .Build();
 

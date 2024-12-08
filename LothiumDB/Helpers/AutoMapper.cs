@@ -1,9 +1,9 @@
 using System.Text;
 using System.Reflection;
-using LothiumDB.Core.PocoDataInfo;
+using LothiumDB.Helpers.PocoDataInfo;
 using LothiumDB.DataAnnotations;
 
-namespace LothiumDB.Core;
+namespace LothiumDB.Helpers;
 
 /// <summary>
 /// AutoMapper class that provides a set of methods to automatically extract

@@ -1,16 +1,15 @@
 ﻿using System.Data;
-using System.Data.Common;
 using System.Text.RegularExpressions;
 using LothiumDB.Exceptions;
-using LothiumDB.Core.PocoDataInfo;
+using LothiumDB.Helpers.PocoDataInfo;
 
-namespace LothiumDB.Core;
+namespace LothiumDB.Helpers;
 
 /// <summary>
 /// Helper Class that contains methods used by other class
 /// for complex or specific actions
 /// </summary>
-internal static class DatabaseHelper
+internal static class Utility
 {
     /// <summary>
     /// Return a boolean result based on the current connection object status
@@ -69,7 +68,7 @@ internal static class DatabaseHelper
 
         if (args.Length != 0)
         {
-            DatabaseHelper.AddParametersToDatabaseCommand(
+            Utility.AddParametersToDatabaseCommand(
                 ref command,
                 provider,
                 sql,
@@ -174,7 +173,7 @@ internal static class DatabaseHelper
     /// </summary>
     /// <param name="command">Contains the command to check and validate</param>
     /// <exception cref="DatabaseException">Raise an error if the command don't pass one or more checks</exception>
-    private static void CheckDatabaseCommand(IDbCommand command)
+    internal static void CheckDatabaseCommand(IDbCommand command)
     {
         if (command == null)
             throw new DatabaseException("No database command provided!");
@@ -236,118 +235,17 @@ internal static class DatabaseHelper
     }
     
     /// <summary>
-    /// Perform a scalar command and provided a set of checks to the final returned result
-    /// </summary>
-    /// <typeparam name="T">Contains the type of the returned object</typeparam>
-    /// <param name="command">Contains the database command to perform</param>
-    /// <returns>An object of the </returns>
-    internal static object? PerformScalarCommand<T>(IDbCommand command)
-    {
-        CheckDatabaseCommand(command);
-        
-        var value = command.ExecuteScalar();
-
-        DatabaseHelper.HandleScalarDbNullConversion<T>(
-            value, 
-            out var result
-        );
-        
-        return result;
-    }
-    
-    /// <summary>
-    /// Perform an asynchronous scalar command and provided a set of checks to the final returned result
-    /// </summary>
-    /// <typeparam name="T">Contains the type of the returned object</typeparam>
-    /// <param name="command">Contains the database command to perform</param>
-    /// <param name="cancellationToken">Contains a token to cancel the current operation</param>
-    /// <returns>An object of the </returns>
-    internal static async Task<object?> PerformScalarCommandAsync<T>(IDbCommand command, CancellationToken cancellationToken)
-    {
-        CheckDatabaseCommand(command);
-
-        var value = (command is DbCommand dbCommand)
-            ? await dbCommand.ExecuteScalarAsync(cancellationToken)
-            : command.ExecuteScalar();
-
-        DatabaseHelper.HandleScalarDbNullConversion<T>(
-            value, 
-            out var result
-        );
-        
-        return result;
-    }
-    
-    /// <summary>
-    /// Perform an execute command and return the number of affected rows
-    /// </summary>
-    /// <param name="command">Contains the database command to perform</param>
-    /// <returns>The number of rows affected by the database's command</returns>
-    internal static int PerformExecuteCommand(IDbCommand command)
-    {
-        CheckDatabaseCommand(command);
-        
-        return command.ExecuteNonQuery();
-    }
-    
-    /// <summary>
-    /// Perform an asynchronous execute command and return the number of affected rows
-    /// </summary>
-    /// <param name="command">Contains the database command to perform</param>
-    /// <param name="cancellationToken">Contains a token to cancel the current operation</param>
-    /// <returns>The number of rows affected by the database's command</returns>
-    internal static async Task<int> PerformExecuteCommand(IDbCommand command, CancellationToken cancellationToken)
-    {
-        CheckDatabaseCommand(command);
-        
-        return (command is DbCommand dbCommand)
-            ? await dbCommand.ExecuteNonQueryAsync(cancellationToken)
-            : command.ExecuteNonQuery();
-    }
-
-    /// <summary>
-    /// Perform a query command and return a collection of typed objects
-    /// </summary>
-    /// <typeparam name="T">Contains the type of the collection's object</typeparam>
-    /// <param name="command">Contains the database command to perform</param>
-    /// <returns>A collection of object automatically mapped based on a specified model</returns>
-    internal static IEnumerable<T> PerformQueryCommand<T>(IDbCommand command)
-    {
-        CheckDatabaseCommand(command);
-        
-        return RetrieveAndMapData<T>(command.ExecuteReader());
-    }
-    
-    /// <summary>
-    /// Perform an asynchronous query command and return a collection of typed objects
-    /// </summary>
-    /// <typeparam name="T">Contains the type of the collection's object</typeparam>
-    /// <param name="command">Contains the database command to perform</param>
-    /// <param name="cancellationToken">Contains a token to cancel the current operation</param>
-    /// <returns>A collection of object automatically mapped based on a specified model</returns>
-    internal static async Task<IEnumerable<T>> PerformQueryCommandAsync<T>(IDbCommand command, CancellationToken cancellationToken)
-    {
-        CheckDatabaseCommand(command);
-        
-        return RetrieveAndMapData<T>(
-            (command is DbCommand dbCommand)
-                ? await dbCommand.ExecuteReaderAsync(cancellationToken)
-                : command.ExecuteReader()
-        );
-    }
-    
-    /// <summary>
-    /// Convert the result object into a valid return type  
+    /// Convert the result object into a valid return type
     /// </summary>
     /// <typeparam name="T">Contains the type of the final returned object</typeparam>
     /// <param name="value">Contains the object to check and convert if necessary</param>
-    /// <param name="result">Contains the final converted result object</param>
-    private static void HandleScalarDbNullConversion<T>(object? value, out object? result)
+    /// <returns>Return the final converted result object </returns>
+    internal static object? HandleScalarDbNullConversion<T>(object? value)
     {
         var returnType = typeof(T);
         var underlyingType = Nullable.GetUnderlyingType(returnType);
                 
-        result = (underlyingType != null && (value == null || value == DBNull.Value))
+        return (underlyingType != null && (value == null || value == DBNull.Value))
             ? default(T)
             : Convert.ChangeType(value, underlyingType ?? returnType);
     }
@@ -357,7 +255,7 @@ internal static class DatabaseHelper
     /// </summary>
     /// <param name="value"></param>
     /// <param name="columnData"></param>
-    private static void VerifyDbNullValue(PocoColumnData columnData, ref object? value)
+    internal static void VerifyDbNullValue(PocoColumnData columnData, ref object? value)
     {
         if (value != DBNull.Value)
             return;

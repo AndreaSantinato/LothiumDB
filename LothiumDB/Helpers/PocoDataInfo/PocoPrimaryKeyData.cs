@@ -1,4 +1,4 @@
-﻿namespace LothiumDB.Core.PocoDataInfo;
+﻿namespace LothiumDB.Helpers.PocoDataInfo;
 
 /// <summary>
 /// Define the info of an object associated database's table primary keys
